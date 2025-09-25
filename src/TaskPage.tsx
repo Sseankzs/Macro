@@ -1,0 +1,289 @@
+import React, { useState, useRef, useEffect } from 'react';
+import './TaskPage.css';
+import Sidebar from './Sidebar';
+
+interface Task {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  tags: {
+    type: string;
+    urgency: string;
+  };
+  status: 'backlog' | 'todo' | 'in-progress' | 'done';
+}
+
+interface TaskPageProps {
+  onLogout: () => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder') => void;
+}
+
+function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Add Command+T keyboard shortcut for task search
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 't') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  const [tasks, setTasks] = useState<Task[]>([
+    {
+      id: '1',
+      title: 'Implement user authentication',
+      description: 'Add login and registration functionality with JWT tokens',
+      dueDate: '2024-01-15',
+      tags: { type: 'Feature', urgency: 'High' },
+      status: 'in-progress'
+    },
+    {
+      id: '2',
+      title: 'Fix responsive design issues',
+      description: 'Mobile layout breaks on screens smaller than 320px',
+      dueDate: '2024-01-12',
+      tags: { type: 'Bug', urgency: 'Medium' },
+      status: 'todo'
+    },
+    {
+      id: '3',
+      title: 'Add dark mode toggle',
+      description: 'Implement theme switching with system preference detection',
+      dueDate: '2024-01-20',
+      tags: { type: 'Enhancement', urgency: 'Low' },
+      status: 'backlog'
+    },
+    {
+      id: '4',
+      title: 'Optimize database queries',
+      description: 'Reduce query time for user dashboard data',
+      dueDate: '2024-01-10',
+      tags: { type: 'Performance', urgency: 'High' },
+      status: 'done'
+    },
+    {
+      id: '5',
+      title: 'Write unit tests',
+      description: 'Add test coverage for authentication module',
+      dueDate: '2024-01-18',
+      tags: { type: 'Testing', urgency: 'Medium' },
+      status: 'todo'
+    },
+    {
+      id: '6',
+      title: 'Update documentation',
+      description: 'Document new API endpoints and usage examples',
+      dueDate: '2024-01-25',
+      tags: { type: 'Documentation', urgency: 'Low' },
+      status: 'backlog'
+    }
+  ]);
+
+  const [draggedTask, setDraggedTask] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    setDraggedTask(taskId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, newStatus: Task['status']) => {
+    e.preventDefault();
+    if (draggedTask) {
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.id === draggedTask ? { ...task, status: newStatus } : task
+        )
+      );
+      setDraggedTask(null);
+    }
+  };
+
+  const getTasksByStatus = (status: Task['status']) => {
+    return tasks.filter(task => task.status === status);
+  };
+
+  const getUrgencyColor = (urgency: string) => {
+    switch (urgency) {
+      case 'High': return '#d32f2f';
+      case 'Medium': return '#f57c00';
+      case 'Low': return '#7b1fa2';
+      default: return '#8e8e93';
+    }
+  };
+
+  const getUrgencyBackground = (urgency: string) => {
+    switch (urgency) {
+      case 'High': return '#ffebee';
+      case 'Medium': return '#fff3e0';
+      case 'Low': return '#f3e5f5';
+      default: return '#f5f5f5';
+    }
+  };
+
+  const getUrgencyBorder = (urgency: string) => {
+    switch (urgency) {
+      case 'High': return '#ffcdd2';
+      case 'Medium': return '#ffcc02';
+      case 'Low': return '#e1bee7';
+      default: return '#e0e0e0';
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = date.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
+    return `${diffDays} days`;
+  };
+
+  const TaskCard = ({ task }: { task: Task }) => (
+    <div
+      className="task-card"
+      draggable
+      onDragStart={(e) => handleDragStart(e, task.id)}
+    >
+      <div className="task-tags">
+        <div className="urgency-tags">
+          <span 
+            className="tag urgency-tag"
+            style={{ 
+              backgroundColor: getUrgencyBackground(task.tags.urgency),
+              color: getUrgencyColor(task.tags.urgency),
+              borderColor: getUrgencyBorder(task.tags.urgency)
+            }}
+          >
+            {task.tags.urgency}
+          </span>
+        </div>
+        <div className="type-tags">
+          <span className="tag type-tag">
+            {task.tags.type}
+          </span>
+        </div>
+      </div>
+      <h4 className="task-title">{task.title}</h4>
+      <p className="task-description">{task.description}</p>
+      <div className="task-footer">
+        <span className="due-date">
+          {formatDate(task.dueDate)}
+        </span>
+      </div>
+    </div>
+  );
+
+  const KanbanColumn = ({ 
+    title, 
+    status, 
+    count 
+  }: { 
+    title: string; 
+    status: Task['status']; 
+    count: number; 
+  }) => (
+    <div 
+      className="kanban-column"
+      onDragOver={handleDragOver}
+      onDrop={(e) => handleDrop(e, status)}
+    >
+      <div className="column-content">
+        <div className="column-header-inline">
+          <div className="column-title-section">
+            <h3 className="column-title">{title}</h3>
+            <span className="column-card-count">{count} cards</span>
+          </div>
+          <button className="column-actions" onClick={() => console.log(`Actions for ${title}`)}>
+            <svg className="ellipsis-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="19" cy="12" r="1"/>
+              <circle cx="5" cy="12" r="1"/>
+            </svg>
+          </button>
+        </div>
+        <button 
+          className="add-card-button"
+          onClick={() => console.log(`Add task to ${title}`)}
+        >
+          +
+        </button>
+        {getTasksByStatus(status).map(task => (
+          <TaskCard key={task.id} task={task} />
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="dashboard-container">
+      <Sidebar 
+        currentPage="tasks" 
+        onLogout={onLogout} 
+        onPageChange={onPageChange || (() => {})} 
+      />
+      
+      <div className="main-content">
+        <div className="task-container">
+          <div className="task-header">
+            <h1>Tasks</h1>
+            <div className="task-search-bar">
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search tasks"
+                className="task-search-input"
+              />
+              <svg className="task-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <span className="task-search-shortcut">⌘T</span>
+            </div>
+          </div>
+          
+          <div className="kanban-board">
+            <KanbanColumn 
+              title="Backlog" 
+              status="backlog" 
+              count={getTasksByStatus('backlog').length} 
+            />
+            <KanbanColumn 
+              title="To-do" 
+              status="todo" 
+              count={getTasksByStatus('todo').length} 
+            />
+            <KanbanColumn 
+              title="In Progress" 
+              status="in-progress" 
+              count={getTasksByStatus('in-progress').length} 
+            />
+            <KanbanColumn 
+              title="Done" 
+              status="done" 
+              count={getTasksByStatus('done').length} 
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default TaskPage;

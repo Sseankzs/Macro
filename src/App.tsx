@@ -1,14 +1,48 @@
 import { useState } from 'react'
 import './App.css'
+import Dashboard from './Dashboard'
+import TaskPage from './TaskPage'
+import TeamsPage from './TeamsPage'
+import RegisterAppsPage from './RegisterAppsPage'
+import MetricBuilderPage from './MetricBuilderPage'
 
 function App() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder'>('dashboard')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle login logic here
+    // Handle login logic here - for dev mode, just log in
     console.log('Login attempt:', { email, password })
+    setIsLoggedIn(true)
+  }
+
+  const handleLogout = () => {
+    setIsLoggedIn(false)
+    setCurrentPage('dashboard')
+  }
+
+  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder') => {
+    setCurrentPage(page)
+  }
+
+  // Show dashboard if logged in
+  if (isLoggedIn) {
+    if (currentPage === 'tasks') {
+      return <TaskPage onLogout={handleLogout} onPageChange={handlePageChange} />
+    }
+    if (currentPage === 'teams') {
+      return <TeamsPage onLogout={handleLogout} onPageChange={handlePageChange} />
+    }
+    if (currentPage === 'register-apps') {
+      return <RegisterAppsPage onLogout={handleLogout} onPageChange={handlePageChange} />
+    }
+    if (currentPage === 'metric-builder') {
+      return <MetricBuilderPage onLogout={handleLogout} onPageChange={handlePageChange} />
+    }
+    return <Dashboard onLogout={handleLogout} onPageChange={handlePageChange} />
   }
 
   return (
@@ -27,7 +61,6 @@ function App() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
-                required
               />
             </div>
             
@@ -39,7 +72,6 @@ function App() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
-                required
               />
             </div>
             
