@@ -15,7 +15,7 @@ function App() {
     <div className="login-container">
       <div className="login-left">
         <div className="login-form-container">
-          <h1 className="login-title">Welcome Back</h1>
+          <h1 className="login-title">Welcome Back!</h1>
           <p className="login-subtitle">Sign in to your account</p>
           
           <form onSubmit={handleSubmit} className="login-form">
@@ -53,7 +53,7 @@ function App() {
             </div>
             
             <button type="submit" className="login-button">
-              Sign In
+              Log In
             </button>
             
             <div className="divider">
