@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import './Dashboard.css';
 import Sidebar from './Sidebar';
 
@@ -8,6 +9,23 @@ interface DashboardProps {
 }
 
 function Dashboard({ onLogout, onPageChange }: DashboardProps) {
+  const [user, setUser] = useState<{ name: string } | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const userData = await invoke('get_current_user');
+        setUser(userData as { name: string });
+      } catch (error) {
+        console.error('Failed to fetch user:', error);
+        // Fallback to default name if fetch fails
+        setUser({ name: 'Dev User' });
+      }
+    };
+
+    fetchUser();
+  }, []);
+
   return (
     <div className="dashboard-container">
       <Sidebar 
@@ -18,7 +36,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       
       <div className="main-content">
         <header className="main-header">
-          <h1>Welcome to Dashboard</h1>
+          <h1>Welcome, {user?.name || 'User'}!</h1>
           <div className="header-actions">
             <button className="btn-primary">New Project</button>
           </div>
@@ -130,10 +148,10 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                 </div>
                 <div className="pie-chart-container">
                   <div className="pie-chart">
-                    <div className="pie-segment coding" style={{'--percentage': '45%'}}></div>
-                    <div className="pie-segment communication" style={{'--percentage': '25%'}}></div>
-                    <div className="pie-segment research" style={{'--percentage': '20%'}}></div>
-                    <div className="pie-segment other" style={{'--percentage': '10%'}}></div>
+                    <div className="pie-segment coding" style={{'--percentage': '45%'} as React.CSSProperties}></div>
+                    <div className="pie-segment communication" style={{'--percentage': '25%'} as React.CSSProperties}></div>
+                    <div className="pie-segment research" style={{'--percentage': '20%'} as React.CSSProperties}></div>
+                    <div className="pie-segment other" style={{'--percentage': '10%'} as React.CSSProperties}></div>
                     <div className="pie-center">
                       <span className="pie-total">6.5h</span>
                     </div>
