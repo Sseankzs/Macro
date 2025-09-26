@@ -104,7 +104,8 @@
   overflow-y: auto;
 }
 
-.kanban-column {
+/* Task Page Specific Kanban Column */
+.task-kanban-column {
   background: #f8f9fa;
   border-radius: 12px;
   display: flex;
@@ -115,36 +116,36 @@
   box-shadow: none;
 }
 
-/* Column Header */
-.column-header {
+/* Task Column Header */
+.task-column-header {
   padding: 1.5rem 1.5rem 0.5rem 1.5rem;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
 }
 
-.column-title-section {
+.task-column-title-section {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.25rem;
 }
 
-.column-title {
+.task-column-title {
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
   color: #1d1d1f;
 }
 
-.column-card-count {
+.task-column-card-count {
   color: #8e8e93;
   font-size: 0.875rem;
   font-weight: 500;
   margin: 0;
 }
 
-.column-actions {
+.task-column-actions {
   background: none;
   border: none;
   cursor: pointer;
@@ -156,35 +157,29 @@
   justify-content: center;
 }
 
-.column-actions:hover {
+.task-column-actions:hover {
   background: rgba(0, 0, 0, 0.05);
 }
 
-.ellipsis-icon {
+.task-ellipsis-icon {
   width: 16px;
   height: 16px;
   color: #8e8e93;
 }
 
-/* Column Content */
-.column-content {
+/* Task Column Content - VERTICAL STACKING */
+.task-column-content {
   flex: 1;
-  padding: 0.5rem 1.5rem 1.5rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  overflow-y: auto;
-}
-
-/* TaskPage Specific Column Content */
-.task-page-column-content {
+  padding: 0.125rem 0.75rem 0.5rem 0.75rem;
   display: flex !important;
   flex-direction: column !important;
+  gap: 0.75rem;
+  overflow-y: auto;
   align-items: stretch !important;
 }
 
-/* Add Card Button */
-.add-card-button {
+/* Task Add Card Button */
+.task-add-card-button {
   background: #f5f5f5;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
@@ -200,34 +195,30 @@
   min-height: 28px;
 }
 
-.add-card-button:hover {
+.task-add-card-button:hover {
   background: #eeeeee;
   color: #616161;
 }
 
-/* Task Cards */
-.task-card {
+/* Task Page Specific Cards - VERTICAL STACKING */
+.task-page-card {
   background: white;
   border-radius: 8px;
   padding: 0.75rem;
   cursor: grab;
   transition: all 0.2s ease;
   border: 1px solid #dee2e6;
-}
-
-/* TaskPage Specific Card Styling */
-.task-page-card {
   display: block !important;
   width: 100% !important;
   box-sizing: border-box !important;
 }
 
-.task-card:hover {
+.task-page-card:hover {
   transform: translateY(-2px);
   border-color: #6c757d;
 }
 
-.task-card:active {
+.task-page-card:active {
   cursor: grabbing;
 }
 

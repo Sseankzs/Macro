@@ -94,6 +94,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   ]);
 
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [availableApps] = useState([
     { name: 'Visual Studio Code', directory: '/Applications/Visual Studio Code.app', icon: '💻' },
@@ -173,21 +174,32 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   const getTotalCount = () => apps.length;
 
   const AppCard = ({ app }: { app: App }) => (
-    <div className={`app-card ${!app.isEnabled ? 'disabled' : ''}`}>
+    <div className={`app-card ${!app.isEnabled ? 'disabled' : ''} ${isEditMode ? 'edit-mode' : ''}`}>
+      {isEditMode && (
+        <button 
+          className="delete-button"
+          onClick={() => handleDeleteApp(app.id)}
+          title="Remove app"
+        >
+          −
+        </button>
+      )}
       <div className="app-header">
         <div className="app-info">
           <h4 className="app-name">{app.name}</h4>
           <p className="app-directory">{app.directory}</p>
         </div>
         <div className="app-actions">
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={app.isEnabled}
-              onChange={() => handleToggleApp(app.id)}
-            />
-            <span className="toggle-slider"></span>
-          </label>
+          {!isEditMode && (
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={app.isEnabled}
+                onChange={() => handleToggleApp(app.id)}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          )}
         </div>
       </div>
       
@@ -221,36 +233,44 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
               </p>
             </div>
             <div className="header-actions">
-              <div className="dropdown-container" ref={dropdownRef}>
-                <div 
-                  className="ios-dropdown"
-                  onClick={() => setShowDropdown(!showDropdown)}
-                >
-                  <span className="dropdown-text">Add App</span>
-                  <span className={`dropdown-arrow ${showDropdown ? 'open' : ''}`}>▼</span>
-                </div>
-                {showDropdown && (
-                  <div className="dropdown-menu">
-                    {availableApps
-                      .filter(app => !apps.some(registeredApp => registeredApp.name === app.name))
-                      .map((app, index) => (
-                        <div
-                          key={index}
-                          className="dropdown-item"
-                          onClick={() => handleAddFromDropdown(app)}
-                        >
-                          <span className="dropdown-icon">{app.icon}</span>
-                          <span className="dropdown-name">{app.name}</span>
-                        </div>
-                      ))}
-                    {availableApps.filter(app => !apps.some(registeredApp => registeredApp.name === app.name)).length === 0 && (
-                      <div className="dropdown-empty">
-                        No available apps to add
-                      </div>
-                    )}
+              <button 
+                className="edit-button"
+                onClick={() => setIsEditMode(!isEditMode)}
+              >
+                {isEditMode ? 'Done' : 'Edit'}
+              </button>
+              {!isEditMode && (
+                <div className="dropdown-container" ref={dropdownRef}>
+                  <div 
+                    className="ios-dropdown"
+                    onClick={() => setShowDropdown(!showDropdown)}
+                  >
+                    <span className="dropdown-text">Add App</span>
+                    <span className={`dropdown-arrow ${showDropdown ? 'open' : ''}`}>▼</span>
                   </div>
-                )}
-              </div>
+                  {showDropdown && (
+                    <div className="dropdown-menu">
+                      {availableApps
+                        .filter(app => !apps.some(registeredApp => registeredApp.name === app.name))
+                        .map((app, index) => (
+                          <div
+                            key={index}
+                            className="dropdown-item"
+                            onClick={() => handleAddFromDropdown(app)}
+                          >
+                            <span className="dropdown-icon">{app.icon}</span>
+                            <span className="dropdown-name">{app.name}</span>
+                          </div>
+                        ))}
+                      {availableApps.filter(app => !apps.some(registeredApp => registeredApp.name === app.name)).length === 0 && (
+                        <div className="dropdown-empty">
+                          No available apps to add
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           

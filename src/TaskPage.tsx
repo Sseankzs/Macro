@@ -160,7 +160,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
 
   const TaskCard = ({ task }: { task: Task }) => (
     <div
-      className="task-card task-page-card"
+      className="task-page-card"
       draggable
       onDragStart={(e) => handleDragStart(e, task.id)}
     >
@@ -216,26 +216,26 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     count: number; 
   }) => (
     <div 
-      className="kanban-column"
+      className="task-kanban-column"
       onDragOver={handleDragOver}
       onDrop={(e) => handleDrop(e, status)}
     >
-      <div className="column-header">
-        <div className="column-title-section">
-          <h3 className="column-title">{title}</h3>
-          <span className="column-card-count">{count} cards</span>
+      <div className="task-column-header">
+        <div className="task-column-title-section">
+          <h3 className="task-column-title">{title}</h3>
+          <span className="task-column-card-count">{count} cards</span>
         </div>
-        <button className="column-actions" onClick={() => console.log(`Actions for ${title}`)}>
-          <svg className="ellipsis-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <button className="task-column-actions" onClick={() => console.log(`Actions for ${title}`)}>
+          <svg className="task-ellipsis-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="1"/>
             <circle cx="19" cy="12" r="1"/>
             <circle cx="5" cy="12" r="1"/>
           </svg>
         </button>
       </div>
-      <div className="column-content task-page-column-content">
+      <div className="task-column-content">
         <button 
-          className="add-card-button task-page-add-button"
+          className="task-add-card-button"
           onClick={() => console.log(`Add task to ${title}`)}
         >
           +
