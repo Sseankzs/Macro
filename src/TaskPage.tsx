@@ -90,10 +90,17 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   ]);
 
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     setDraggedTask(taskId);
     e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', taskId);
+  };
+
+  const handleDragEnter = (e: React.DragEvent, status: Task['status']) => {
+    e.preventDefault();
+    setDragOverColumn(status);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -101,16 +108,29 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     e.dataTransfer.dropEffect = 'move';
   };
 
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverColumn(null);
+  };
+
   const handleDrop = (e: React.DragEvent, newStatus: Task['status']) => {
     e.preventDefault();
-    if (draggedTask) {
+    const taskId = e.dataTransfer.getData('text/plain') || draggedTask;
+    
+    if (taskId) {
       setTasks(prevTasks =>
         prevTasks.map(task =>
-          task.id === draggedTask ? { ...task, status: newStatus } : task
+          task.id === taskId ? { ...task, status: newStatus } : task
         )
       );
       setDraggedTask(null);
+      setDragOverColumn(null);
     }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTask(null);
+    setDragOverColumn(null);
   };
 
   const getTasksByStatus = (status: Task['status']) => {
@@ -160,9 +180,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
 
   const TaskCard = ({ task }: { task: Task }) => (
     <div
-      className="task-page-card"
+      className={`task-page-card ${draggedTask === task.id ? 'dragging' : ''}`}
       draggable
       onDragStart={(e) => handleDragStart(e, task.id)}
+      onDragEnd={handleDragEnd}
     >
       <div className="task-tags">
         <div className="urgency-tags">
@@ -216,8 +237,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     count: number; 
   }) => (
     <div 
-      className="task-kanban-column"
+      className={`task-kanban-column ${dragOverColumn === status ? 'drag-over' : ''}`}
+      onDragEnter={(e) => handleDragEnter(e, status)}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={(e) => handleDrop(e, status)}
     >
       <div className="task-column-header">

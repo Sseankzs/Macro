@@ -116,6 +116,11 @@
   box-shadow: none;
 }
 
+.task-kanban-column.drag-over {
+  background: #e3f2fd;
+  border: 2px dashed #2196f3;
+}
+
 /* Task Column Header */
 .task-column-header {
   padding: 1.5rem 1.5rem 0.5rem 1.5rem;
@@ -211,6 +216,10 @@
   display: block !important;
   width: 100% !important;
   box-sizing: border-box !important;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .task-page-card:hover {
@@ -219,6 +228,12 @@
 }
 
 .task-page-card:active {
+  cursor: grabbing;
+}
+
+.task-page-card.dragging {
+  opacity: 0.5;
+  transform: rotate(5deg);
   cursor: grabbing;
 }
 
@@ -260,6 +275,7 @@
 
 .urgency-tag {
   /* Dynamic styling applied via inline styles */
+  display: inline-block;
 }
 
 /* Task Content */

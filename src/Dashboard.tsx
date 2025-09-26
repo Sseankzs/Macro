@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './Dashboard.css';
 import Sidebar from './Sidebar';
 
@@ -8,6 +8,12 @@ interface DashboardProps {
 }
 
 function Dashboard({ onLogout, onPageChange }: DashboardProps) {
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState<'today' | 'week' | 'month'>('week');
+
+  const handleTimePeriodChange = (period: 'today' | 'week' | 'month') => {
+    setSelectedTimePeriod(period);
+  };
+
   return (
     <div className="dashboard-container">
       <Sidebar 
@@ -17,14 +23,12 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       />
       
       <div className="main-content">
-        <header className="main-header">
-          <h1>Welcome to Dashboard</h1>
-          <div className="header-actions">
-            <button className="btn-primary">New Project</button>
+        <div className="dashboard-page-container">
+          <div className="dashboard-header">
+            <h1>Welcome to Dashboard</h1>
           </div>
-        </header>
-        
-        <div className="content-area">
+          
+          <div className="content-area">
           {/* Top Section - Quick Stats Cards */}
           <div className="stats-section">
             <h2 className="section-title">Today's Overview</h2>
@@ -77,25 +81,73 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
           
           {/* Middle Section - Charts & Visuals */}
           <div className="charts-section">
-            <h2 className="section-title">Time Distribution</h2>
-            <div className="charts-grid">
+            <div className="charts-header">
+              <h2 className="section-title">Time Distribution</h2>
+              <div className="chart-controls chart-controls-stacked">
+                <button 
+                  className={`chart-btn ${selectedTimePeriod === 'today' ? 'active' : ''}`}
+                  onClick={() => handleTimePeriodChange('today')}
+                >
+                  Today
+                </button>
+                <button 
+                  className={`chart-btn ${selectedTimePeriod === 'week' ? 'active' : ''}`}
+                  onClick={() => handleTimePeriodChange('week')}
+                >
+                  Week
+                </button>
+                <button 
+                  className={`chart-btn ${selectedTimePeriod === 'month' ? 'active' : ''}`}
+                  onClick={() => handleTimePeriodChange('month')}
+                >
+                  Month
+                </button>
+              </div>
+            </div>
+            
+            {/* Daily Time Distribution Chart - Show for Week/Month */}
+            {selectedTimePeriod !== 'today' && (
               <div className="chart-card ios-card">
                 <div className="chart-header">
                   <h3>Daily Time Distribution</h3>
-                  <div className="chart-controls">
-                    <button className="chart-btn active">Week</button>
-                    <button className="chart-btn">Month</button>
-                  </div>
                 </div>
                 <div className="chart-placeholder">
                   <div className="chart-bars">
-                    <div className="bar" style={{height: '60%', backgroundColor: '#007AFF'}}></div>
-                    <div className="bar" style={{height: '80%', backgroundColor: '#34C759'}}></div>
-                    <div className="bar" style={{height: '45%', backgroundColor: '#FF9500'}}></div>
-                    <div className="bar" style={{height: '70%', backgroundColor: '#AF52DE'}}></div>
-                    <div className="bar" style={{height: '90%', backgroundColor: '#FF3B30'}}></div>
-                    <div className="bar" style={{height: '55%', backgroundColor: '#007AFF'}}></div>
-                    <div className="bar" style={{height: '75%', backgroundColor: '#34C759'}}></div>
+                    {/* Monday */}
+                    <div className="bar-container">
+                      <div className="bar-segment" style={{height: '40%', backgroundColor: '#007AFF'}} data-label="Development: 4.2h"></div>
+                      <div className="bar-segment" style={{height: '20%', backgroundColor: '#34C759'}} data-label="Communication: 2.1h"></div>
+                    </div>
+                    {/* Tuesday */}
+                    <div className="bar-container">
+                      <div className="bar-segment" style={{height: '50%', backgroundColor: '#007AFF'}} data-label="Development: 5.3h"></div>
+                      <div className="bar-segment" style={{height: '30%', backgroundColor: '#FF9500'}} data-label="Research: 3.2h"></div>
+                    </div>
+                    {/* Wednesday */}
+                    <div className="bar-container">
+                      <div className="bar-segment" style={{height: '30%', backgroundColor: '#007AFF'}} data-label="Development: 3.1h"></div>
+                      <div className="bar-segment" style={{height: '15%', backgroundColor: '#34C759'}} data-label="Communication: 1.6h"></div>
+                    </div>
+                    {/* Thursday */}
+                    <div className="bar-container">
+                      <div className="bar-segment" style={{height: '45%', backgroundColor: '#007AFF'}} data-label="Development: 4.8h"></div>
+                      <div className="bar-segment" style={{height: '25%', backgroundColor: '#AF52DE'}} data-label="Design: 2.7h"></div>
+                    </div>
+                    {/* Friday */}
+                    <div className="bar-container">
+                      <div className="bar-segment" style={{height: '60%', backgroundColor: '#007AFF'}} data-label="Development: 6.4h"></div>
+                      <div className="bar-segment" style={{height: '30%', backgroundColor: '#FF3B30'}} data-label="Meetings: 3.2h"></div>
+                    </div>
+                    {/* Saturday */}
+                    <div className="bar-container">
+                      <div className="bar-segment" style={{height: '35%', backgroundColor: '#007AFF'}} data-label="Development: 3.7h"></div>
+                      <div className="bar-segment" style={{height: '20%', backgroundColor: '#34C759'}} data-label="Communication: 2.1h"></div>
+                    </div>
+                    {/* Sunday */}
+                    <div className="bar-container">
+                      <div className="bar-segment" style={{height: '50%', backgroundColor: '#007AFF'}} data-label="Development: 5.3h"></div>
+                      <div className="bar-segment" style={{height: '25%', backgroundColor: '#FF9500'}} data-label="Research: 2.7h"></div>
+                    </div>
                   </div>
                   <div className="chart-labels">
                     <span>Mon</span>
@@ -107,62 +159,53 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                     <span>Sun</span>
                   </div>
                 </div>
-                <div className="chart-legend">
-                  <div className="legend-item">
-                    <span className="legend-color" style={{backgroundColor: '#007AFF'}}></span>
-                    <span>Development</span>
-                  </div>
-                  <div className="legend-item">
-                    <span className="legend-color" style={{backgroundColor: '#34C759'}}></span>
-                    <span>Communication</span>
-                  </div>
-                  <div className="legend-item">
-                    <span className="legend-color" style={{backgroundColor: '#FF9500'}}></span>
-                    <span>Research</span>
-                  </div>
-                </div>
               </div>
-              
-              <div className="chart-card ios-card">
+            )}
+            
+            {/* App Category Breakdown Chart - Show for Today */}
+            {selectedTimePeriod === 'today' && (
+              <div className="chart-card ios-card chart-card-expanded">
                 <div className="chart-header">
                   <h3>App Category Breakdown</h3>
-                  <span className="chart-period">today</span>
                 </div>
-                <div className="pie-chart-container">
-                  <div className="pie-chart">
-                    <div className="pie-segment coding" style={{'--percentage': '45%'}}></div>
-                    <div className="pie-segment communication" style={{'--percentage': '25%'}}></div>
-                    <div className="pie-segment research" style={{'--percentage': '20%'}}></div>
-                    <div className="pie-segment other" style={{'--percentage': '10%'}}></div>
-                    <div className="pie-center">
-                      <span className="pie-total">6.5h</span>
+                <div className="expanded-chart-content">
+                  <div className="pie-chart-container">
+                    <div className="pie-chart">
+                      <div className="pie-segment coding" style={{'--percentage': '45%'}}></div>
+                      <div className="pie-segment communication" style={{'--percentage': '25%'}}></div>
+                      <div className="pie-segment research" style={{'--percentage': '20%'}}></div>
+                      <div className="pie-segment other" style={{'--percentage': '10%'}}></div>
+                      <div className="pie-center">
+                        <span className="pie-total">6.5h</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="category-breakdown">
+                    <div className="category-item">
+                      <span className="category-dot coding"></span>
+                      <span className="category-name">Coding</span>
+                      <span className="category-percentage">45%</span>
+                    </div>
+                    <div className="category-item">
+                      <span className="category-dot communication"></span>
+                      <span className="category-name">Communication</span>
+                      <span className="category-percentage">25%</span>
+                    </div>
+                    <div className="category-item">
+                      <span className="category-dot research"></span>
+                      <span className="category-name">Research</span>
+                      <span className="category-percentage">20%</span>
+                    </div>
+                    <div className="category-item">
+                      <span className="category-dot other"></span>
+                      <span className="category-name">Other</span>
+                      <span className="category-percentage">10%</span>
                     </div>
                   </div>
                 </div>
-                <div className="category-breakdown">
-                  <div className="category-item">
-                    <span className="category-dot coding"></span>
-                    <span className="category-name">Coding</span>
-                    <span className="category-percentage">45%</span>
-                  </div>
-                  <div className="category-item">
-                    <span className="category-dot communication"></span>
-                    <span className="category-name">Communication</span>
-                    <span className="category-percentage">25%</span>
-                  </div>
-                  <div className="category-item">
-                    <span className="category-dot research"></span>
-                    <span className="category-name">Research</span>
-                    <span className="category-percentage">20%</span>
-                  </div>
-                  <div className="category-item">
-                    <span className="category-dot other"></span>
-                    <span className="category-name">Other</span>
-                    <span className="category-percentage">10%</span>
-                  </div>
-                </div>
               </div>
-            </div>
+            )}
+          </div>
           </div>
         </div>
       </div>
