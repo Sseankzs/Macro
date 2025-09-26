@@ -1,0 +1,865 @@
+use crate::database::{
+    Application, Database, Project, Task, Team, TimeEntry, User,
+};
+use crate::default_user::{get_default_user, get_default_user_id};
+use serde_json::json;
+use tauri::State;
+
+// Helper function to generate UUID strings
+fn generate_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+// Helper function to get current timestamp
+fn now() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now()
+}
+
+// ===== USER COMMANDS =====
+
+#[tauri::command]
+pub async fn create_user(
+    db: State<'_, Database>,
+    name: String,
+    email: String,
+    team_id: Option<String>,
+    role: String,
+) -> Result<User, String> {
+    match role.as_str() {
+        "owner" | "manager" | "member" => {},
+        _ => return Err("Invalid role. Must be 'owner', 'manager', or 'member'".to_string()),
+    }
+
+    let user_data = json!({
+        "id": generate_id(),
+        "name": name,
+        "email": email,
+        "team_id": team_id,
+        "current_project_id": null,
+        "role": role,
+        "created_at": now().to_rfc3339(),
+        "updated_at": now().to_rfc3339()
+    });
+
+    let response = db
+        .execute_query("users", "POST", Some(user_data))
+        .await
+        .map_err(|e| format!("Failed to create user: {}", e))?;
+
+    let created_user: User = serde_json::from_value(response)
+        .map_err(|e| format!("Failed to parse created user: {}", e))?;
+
+    Ok(created_user)
+}
+
+#[tauri::command]
+pub async fn get_user(db: State<'_, Database>, user_id: String) -> Result<Option<User>, String> {
+    let url = format!("{}/rest/v1/users?id=eq.{}", db.base_url, user_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch user: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let users: Vec<User> = response.json().await.map_err(|e| format!("Failed to parse user: {}", e))?;
+    Ok(users.into_iter().next())
+}
+
+#[tauri::command]
+pub async fn get_users_by_team(
+    db: State<'_, Database>,
+    team_id: String,
+) -> Result<Vec<User>, String> {
+    let url = format!("{}/rest/v1/users?team_id=eq.{}", db.base_url, team_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch users: {}", e))?;
+
+    let users: Vec<User> = response.json().await.map_err(|e| format!("Failed to parse users: {}", e))?;
+    Ok(users)
+}
+
+#[tauri::command]
+pub async fn update_user(
+    db: State<'_, Database>,
+    user_id: String,
+    name: Option<String>,
+    email: Option<String>,
+    team_id: Option<String>,
+    current_project_id: Option<String>,
+    role: Option<String>,
+) -> Result<User, String> {
+    let mut update_data = json!({
+        "updated_at": now().to_rfc3339()
+    });
+
+    if let Some(name) = name {
+        update_data["name"] = json!(name);
+    }
+    if let Some(email) = email {
+        update_data["email"] = json!(email);
+    }
+    if let Some(team_id) = team_id {
+        update_data["team_id"] = json!(team_id);
+    }
+    if let Some(current_project_id) = current_project_id {
+        update_data["current_project_id"] = json!(current_project_id);
+    }
+    if let Some(role) = role {
+        update_data["role"] = json!(role);
+    }
+
+    let url = format!("{}/rest/v1/users?id=eq.{}", db.base_url, user_id);
+    let response = db.client
+        .patch(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=representation")
+        .json(&update_data)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to update user: {}", e))?;
+
+    let updated_user: User = response.json().await.map_err(|e| format!("Failed to parse updated user: {}", e))?;
+    Ok(updated_user)
+}
+
+// ===== TEAM COMMANDS =====
+
+#[tauri::command]
+pub async fn create_team(
+    db: State<'_, Database>,
+    team_name: String,
+) -> Result<Team, String> {
+    let team_data = json!({
+        "id": generate_id(),
+        "team_name": team_name,
+        "created_at": now().to_rfc3339(),
+        "updated_at": now().to_rfc3339()
+    });
+
+    let response = db
+        .execute_query("teams", "POST", Some(team_data))
+        .await
+        .map_err(|e| format!("Failed to create team: {}", e))?;
+
+    let created_team: Team = serde_json::from_value(response)
+        .map_err(|e| format!("Failed to parse created team: {}", e))?;
+
+    Ok(created_team)
+}
+
+#[tauri::command]
+pub async fn get_team(db: State<'_, Database>, team_id: String) -> Result<Option<Team>, String> {
+    let url = format!("{}/rest/v1/teams?id=eq.{}", db.base_url, team_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch team: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let teams: Vec<Team> = response.json().await.map_err(|e| format!("Failed to parse team: {}", e))?;
+    Ok(teams.into_iter().next())
+}
+
+#[tauri::command]
+pub async fn get_all_teams(db: State<'_, Database>) -> Result<Vec<Team>, String> {
+    let url = format!("{}/rest/v1/teams", db.base_url);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch teams: {}", e))?;
+
+    let teams: Vec<Team> = response.json().await.map_err(|e| format!("Failed to parse teams: {}", e))?;
+    Ok(teams)
+}
+
+// ===== PROJECT COMMANDS =====
+
+#[tauri::command]
+pub async fn create_project(
+    db: State<'_, Database>,
+    name: String,
+    team_id: String,
+    manager_id: String,
+    description: Option<String>,
+) -> Result<Project, String> {
+    let project_data = json!({
+        "id": generate_id(),
+        "name": name,
+        "team_id": team_id,
+        "manager_id": manager_id,
+        "description": description,
+        "created_at": now().to_rfc3339(),
+        "updated_at": now().to_rfc3339()
+    });
+
+    let response = db
+        .execute_query("projects", "POST", Some(project_data))
+        .await
+        .map_err(|e| format!("Failed to create project: {}", e))?;
+
+    let created_project: Project = serde_json::from_value(response)
+        .map_err(|e| format!("Failed to parse created project: {}", e))?;
+
+    Ok(created_project)
+}
+
+#[tauri::command]
+pub async fn get_projects_by_team(
+    db: State<'_, Database>,
+    team_id: String,
+) -> Result<Vec<Project>, String> {
+    let url = format!("{}/rest/v1/projects?team_id=eq.{}", db.base_url, team_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch projects: {}", e))?;
+
+    let projects: Vec<Project> = response.json().await.map_err(|e| format!("Failed to parse projects: {}", e))?;
+    Ok(projects)
+}
+
+#[tauri::command]
+pub async fn get_project(db: State<'_, Database>, project_id: String) -> Result<Option<Project>, String> {
+    let url = format!("{}/rest/v1/projects?id=eq.{}", db.base_url, project_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch project: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let projects: Vec<Project> = response.json().await.map_err(|e| format!("Failed to parse project: {}", e))?;
+    Ok(projects.into_iter().next())
+}
+
+// ===== TASK COMMANDS =====
+
+#[tauri::command]
+pub async fn create_task(
+    db: State<'_, Database>,
+    title: String,
+    project_id: String,
+    assignee_id: Option<String>,
+    description: Option<String>,
+    status: Option<String>,
+    priority: Option<String>,
+    due_date: Option<String>,
+) -> Result<Task, String> {
+    match status.as_deref().unwrap_or("todo") {
+        "todo" | "in_progress" | "done" => {},
+        _ => return Err("Invalid status. Must be 'todo', 'in_progress', or 'done'".to_string()),
+    }
+
+    if let Some(priority_val) = priority.as_deref() {
+        match priority_val {
+            "low" | "medium" | "high" => {},
+            _ => return Err("Invalid priority. Must be 'low', 'medium', or 'high'".to_string()),
+        }
+    }
+
+    let task_data = json!({
+        "id": generate_id(),
+        "title": title,
+        "description": description,
+        "project_id": project_id,
+        "assignee_id": assignee_id,
+        "status": status.unwrap_or("todo".to_string()),
+        "priority": priority,
+        "due_date": due_date,
+        "created_at": now().to_rfc3339(),
+        "updated_at": now().to_rfc3339()
+    });
+
+    let response = db
+        .execute_query("tasks", "POST", Some(task_data))
+        .await
+        .map_err(|e| format!("Failed to create task: {}", e))?;
+
+    let created_task: Task = serde_json::from_value(response)
+        .map_err(|e| format!("Failed to parse created task: {}", e))?;
+
+    Ok(created_task)
+}
+
+#[tauri::command]
+pub async fn get_tasks_by_project(
+    db: State<'_, Database>,
+    project_id: String,
+) -> Result<Vec<Task>, String> {
+    let url = format!("{}/rest/v1/tasks?project_id=eq.{}", db.base_url, project_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch tasks: {}", e))?;
+
+    let tasks: Vec<Task> = response.json().await.map_err(|e| format!("Failed to parse tasks: {}", e))?;
+    Ok(tasks)
+}
+
+#[tauri::command]
+pub async fn get_tasks_by_assignee(
+    db: State<'_, Database>,
+    assignee_id: String,
+) -> Result<Vec<Task>, String> {
+    let url = format!("{}/rest/v1/tasks?assignee_id=eq.{}", db.base_url, assignee_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch tasks: {}", e))?;
+
+    let tasks: Vec<Task> = response.json().await.map_err(|e| format!("Failed to parse tasks: {}", e))?;
+    Ok(tasks)
+}
+
+#[tauri::command]
+pub async fn update_task(
+    db: State<'_, Database>,
+    task_id: String,
+    title: Option<String>,
+    description: Option<String>,
+    assignee_id: Option<String>,
+    status: Option<String>,
+    priority: Option<String>,
+    due_date: Option<String>,
+) -> Result<Task, String> {
+    let mut update_data = json!({
+        "updated_at": now().to_rfc3339()
+    });
+
+    if let Some(title) = title {
+        update_data["title"] = json!(title);
+    }
+    if let Some(description) = description {
+        update_data["description"] = json!(description);
+    }
+    if let Some(assignee_id) = assignee_id {
+        update_data["assignee_id"] = json!(assignee_id);
+    }
+    if let Some(status) = status {
+        update_data["status"] = json!(status);
+    }
+    if let Some(priority) = priority {
+        update_data["priority"] = json!(priority);
+    }
+    if let Some(due_date) = due_date {
+        update_data["due_date"] = json!(due_date);
+    }
+
+    let url = format!("{}/rest/v1/tasks?id=eq.{}", db.base_url, task_id);
+    let response = db.client
+        .patch(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=representation")
+        .json(&update_data)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to update task: {}", e))?;
+
+    let updated_task: Task = response.json().await.map_err(|e| format!("Failed to parse updated task: {}", e))?;
+    Ok(updated_task)
+}
+
+// ===== APPLICATION COMMANDS =====
+
+#[tauri::command]
+pub async fn create_application(
+    db: State<'_, Database>,
+    name: String,
+    process_name: String,
+    user_id: String,
+    icon_path: Option<String>,
+    category: Option<String>,
+    is_tracked: Option<bool>,
+) -> Result<Application, String> {
+    let application_data = json!({
+        "id": generate_id(),
+        "name": name,
+        "process_name": process_name,
+        "icon_path": icon_path,
+        "category": category,
+        "is_tracked": is_tracked.unwrap_or(false),
+        "user_id": user_id,
+        "created_at": now().to_rfc3339(),
+        "updated_at": now().to_rfc3339()
+    });
+
+    let response = db
+        .execute_query("applications", "POST", Some(application_data))
+        .await
+        .map_err(|e| format!("Failed to create application: {}", e))?;
+
+    let created_app: Application = serde_json::from_value(response)
+        .map_err(|e| format!("Failed to parse created application: {}", e))?;
+
+    Ok(created_app)
+}
+
+#[tauri::command]
+pub async fn get_applications_by_user(
+    db: State<'_, Database>,
+    user_id: String,
+) -> Result<Vec<Application>, String> {
+    let url = format!("{}/rest/v1/applications?user_id=eq.{}", db.base_url, user_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch applications: {}", e))?;
+
+    let applications: Vec<Application> = response.json().await.map_err(|e| format!("Failed to parse applications: {}", e))?;
+    Ok(applications)
+}
+
+#[tauri::command]
+pub async fn update_application(
+    db: State<'_, Database>,
+    app_id: String,
+    name: Option<String>,
+    process_name: Option<String>,
+    icon_path: Option<String>,
+    category: Option<String>,
+    is_tracked: Option<bool>,
+) -> Result<Application, String> {
+    let mut update_data = json!({
+        "updated_at": now().to_rfc3339()
+    });
+
+    if let Some(name) = name {
+        update_data["name"] = json!(name);
+    }
+    if let Some(process_name) = process_name {
+        update_data["process_name"] = json!(process_name);
+    }
+    if let Some(icon_path) = icon_path {
+        update_data["icon_path"] = json!(icon_path);
+    }
+    if let Some(category) = category {
+        update_data["category"] = json!(category);
+    }
+    if let Some(is_tracked) = is_tracked {
+        update_data["is_tracked"] = json!(is_tracked);
+    }
+
+    let url = format!("{}/rest/v1/applications?id=eq.{}", db.base_url, app_id);
+    let response = db.client
+        .patch(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=representation")
+        .json(&update_data)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to update application: {}", e))?;
+
+    let updated_app: Application = response.json().await.map_err(|e| format!("Failed to parse updated application: {}", e))?;
+    Ok(updated_app)
+}
+
+// ===== TIME ENTRY COMMANDS =====
+
+#[tauri::command]
+pub async fn create_time_entry(
+    db: State<'_, Database>,
+    user_id: String,
+    app_id: Option<String>,
+    task_id: Option<String>,
+    start_time: String,
+    end_time: Option<String>,
+    duration_seconds: Option<i64>,
+    is_active: Option<bool>,
+) -> Result<TimeEntry, String> {
+    let time_entry_data = json!({
+        "id": generate_id(),
+        "user_id": user_id,
+        "app_id": app_id,
+        "task_id": task_id,
+        "start_time": start_time,
+        "end_time": end_time,
+        "duration_seconds": duration_seconds,
+        "is_active": is_active.unwrap_or(false),
+        "created_at": now().to_rfc3339(),
+        "updated_at": now().to_rfc3339()
+    });
+
+    let response = db
+        .execute_query("time_entries", "POST", Some(time_entry_data))
+        .await
+        .map_err(|e| format!("Failed to create time entry: {}", e))?;
+
+    let created_entry: TimeEntry = serde_json::from_value(response)
+        .map_err(|e| format!("Failed to parse created time entry: {}", e))?;
+
+    Ok(created_entry)
+}
+
+#[tauri::command]
+pub async fn get_time_entries_by_user(
+    db: State<'_, Database>,
+    user_id: String,
+    limit: Option<u32>,
+) -> Result<Vec<TimeEntry>, String> {
+    let mut url = format!("{}/rest/v1/time_entries?user_id=eq.{}&order=start_time.desc", db.base_url, user_id);
+    if let Some(limit) = limit {
+        url.push_str(&format!("&limit={}", limit));
+    }
+
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch time entries: {}", e))?;
+
+    let entries: Vec<TimeEntry> = response.json().await.map_err(|e| format!("Failed to parse time entries: {}", e))?;
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn get_time_entries_by_task(
+    db: State<'_, Database>,
+    task_id: String,
+) -> Result<Vec<TimeEntry>, String> {
+    let url = format!("{}/rest/v1/time_entries?task_id=eq.{}&order=start_time.desc", db.base_url, task_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch time entries: {}", e))?;
+
+    let entries: Vec<TimeEntry> = response.json().await.map_err(|e| format!("Failed to parse time entries: {}", e))?;
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn get_time_entries_by_app(
+    db: State<'_, Database>,
+    app_id: String,
+) -> Result<Vec<TimeEntry>, String> {
+    let url = format!("{}/rest/v1/time_entries?app_id=eq.{}&order=start_time.desc", db.base_url, app_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch time entries: {}", e))?;
+
+    let entries: Vec<TimeEntry> = response.json().await.map_err(|e| format!("Failed to parse time entries: {}", e))?;
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn update_time_entry(
+    db: State<'_, Database>,
+    entry_id: String,
+    end_time: Option<String>,
+    duration_seconds: Option<i64>,
+    is_active: Option<bool>,
+) -> Result<TimeEntry, String> {
+    let mut update_data = json!({
+        "updated_at": now().to_rfc3339()
+    });
+
+    if let Some(end_time) = end_time {
+        update_data["end_time"] = json!(end_time);
+    }
+    if let Some(duration_seconds) = duration_seconds {
+        update_data["duration_seconds"] = json!(duration_seconds);
+    }
+    if let Some(is_active) = is_active {
+        update_data["is_active"] = json!(is_active);
+    }
+
+    let url = format!("{}/rest/v1/time_entries?id=eq.{}", db.base_url, entry_id);
+    let response = db.client
+        .patch(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=representation")
+        .json(&update_data)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to update time entry: {}", e))?;
+
+    let updated_entry: TimeEntry = response.json().await.map_err(|e| format!("Failed to parse updated time entry: {}", e))?;
+    Ok(updated_entry)
+}
+
+// ===== UTILITY COMMANDS =====
+
+#[tauri::command]
+pub async fn test_database_connection(db: State<'_, Database>) -> Result<bool, String> {
+    db.test_connection().await.map_err(|e| e.to_string())
+}
+
+// ===== DEFAULT USER CONVENIENCE COMMANDS =====
+
+#[tauri::command]
+pub async fn get_current_user() -> Result<User, String> {
+    Ok(get_default_user())
+}
+
+#[tauri::command]
+pub async fn get_current_user_id() -> Result<String, String> {
+    Ok(get_default_user_id())
+}
+
+#[tauri::command]
+pub async fn get_my_applications(db: State<'_, Database>) -> Result<Vec<Application>, String> {
+    get_applications_by_user(db, get_default_user_id()).await
+}
+
+#[tauri::command]
+pub async fn get_my_tasks(db: State<'_, Database>) -> Result<Vec<Task>, String> {
+    get_tasks_by_assignee(db, get_default_user_id()).await
+}
+
+#[tauri::command]
+pub async fn get_my_time_entries(
+    db: State<'_, Database>,
+    limit: Option<u32>,
+) -> Result<Vec<TimeEntry>, String> {
+    get_time_entries_by_user(db, get_default_user_id(), limit).await
+}
+
+#[tauri::command]
+pub async fn create_my_application(
+    db: State<'_, Database>,
+    name: String,
+    process_name: String,
+    icon_path: Option<String>,
+    category: Option<String>,
+    is_tracked: Option<bool>,
+) -> Result<Application, String> {
+    create_application(db, name, process_name, get_default_user_id(), icon_path, category, is_tracked).await
+}
+
+#[tauri::command]
+pub async fn create_my_time_entry(
+    db: State<'_, Database>,
+    app_id: Option<String>,
+    task_id: Option<String>,
+    start_time: String,
+    end_time: Option<String>,
+    duration_seconds: Option<i64>,
+    is_active: Option<bool>,
+) -> Result<TimeEntry, String> {
+    create_time_entry(db, get_default_user_id(), app_id, task_id, start_time, end_time, duration_seconds, is_active).await
+}
+
+// ===== PROCESS DETECTION COMMANDS =====
+
+use sysinfo::{System, Process};
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DetectedProcess {
+    pub name: String,
+    pub process_name: String,
+    pub window_title: Option<String>,
+    pub directory: Option<String>,
+    pub is_active: bool,
+    pub last_seen: String,
+}
+
+#[tauri::command]
+pub async fn get_running_processes() -> Result<Vec<DetectedProcess>, String> {
+    let mut system = System::new_all();
+    system.refresh_all();
+    
+    let mut processes = Vec::new();
+    let mut seen_processes = std::collections::HashSet::new();
+    let now = chrono::Utc::now().to_rfc3339();
+    
+    // Common background/system processes to filter out
+    let background_processes = [
+        "svchost.exe", "dwm.exe", "winlogon.exe", "csrss.exe", "smss.exe",
+        "wininit.exe", "services.exe", "lsass.exe", "conhost.exe",
+        "audiodg.exe", "dllhost.exe", "rundll32.exe", "taskhost.exe", "taskhostw.exe",
+        "sihost.exe", "ctfmon.exe", "WmiPrvSE.exe", "SearchIndexer.exe", "SearchProtocolHost.exe",
+        "SearchFilterHost.exe", "RuntimeBroker.exe", "Registry", "System", "Idle",
+        "Memory Compression", "Secure System", "System Interrupts", "spoolsv.exe",
+        "winlogon.exe", "csrss.exe", "smss.exe", "wininit.exe", "services.exe",
+        "lsass.exe", "audiodg.exe", "dllhost.exe", "rundll32.exe", "taskhost.exe",
+        "taskhostw.exe", "sihost.exe", "ctfmon.exe", "WmiPrvSE.exe", "SearchIndexer.exe",
+        "SearchProtocolHost.exe", "SearchFilterHost.exe", "RuntimeBroker.exe"
+    ];
+    
+    for (_pid, process) in system.processes() {
+        let process_name = process.name();
+        let exe_name = process.exe().and_then(|p| p.file_name()).unwrap_or_default();
+        
+        // Skip background/system processes
+        if background_processes.contains(&process_name) || 
+           background_processes.contains(&exe_name.to_string_lossy().as_ref()) ||
+           process_name.len() < 3 || // Skip very short process names
+           process_name.contains("Windows") ||
+           process_name.contains("Microsoft") ||
+           process_name.starts_with(".") ||
+           process_name.contains("Service") ||
+           process_name.contains("Host") ||
+           process_name.contains("Helper") ||
+           process_name.contains("Update") ||
+           process_name.contains("Installer") ||
+           process_name.contains("Setup") ||
+           process_name.contains("Background") {
+            continue;
+        }
+        
+        // Skip if we've already seen this process name (avoid duplicates)
+        if seen_processes.contains(process_name) {
+            continue;
+        }
+        seen_processes.insert(process_name.to_string());
+        
+        // Determine if process is "active" based on known patterns
+        let is_active = is_known_user_app(process_name);
+        
+        let detected_process = DetectedProcess {
+            name: get_friendly_name(process_name),
+            process_name: process_name.to_string(),
+            window_title: None, // Could be enhanced with window detection
+            directory: process.exe().map(|p| p.to_string_lossy().to_string()),
+            is_active,
+            last_seen: now.clone(),
+        };
+        
+        processes.push(detected_process);
+    }
+    
+    // Sort by active status (active first), then alphabetically
+    processes.sort_by(|a, b| {
+        b.is_active.cmp(&a.is_active)
+            .then(a.name.cmp(&b.name))
+    });
+    
+    // Limit to top 30 processes to avoid overwhelming the UI
+    processes.truncate(30);
+    
+    Ok(processes)
+}
+
+fn is_known_user_app(process_name: &str) -> bool {
+    let user_apps = [
+        "code", "chrome", "firefox", "discord", "slack", "notion", "figma", 
+        "photoshop", "excel", "word", "powerpoint", "spotify", "steam", 
+        "obs", "zoom", "teams", "vscode", "notepad", "calc", "mspaint",
+        "edge", "brave", "opera", "safari", "thunderbird", "outlook",
+        "skype", "telegram", "whatsapp", "signal", "vlc", "media",
+        "adobe", "autocad", "blender", "unity", "godot", "android",
+        "xcode", "intellij", "webstorm", "pycharm", "clion", "rider",
+        "datagrip", "phpstorm", "rubymine", "goland", "rustrover"
+    ];
+    
+    let process_lower = process_name.to_lowercase();
+    user_apps.iter().any(|&app| process_lower.contains(app))
+}
+
+fn get_friendly_name(process_name: &str) -> String {
+    let friendly_names: std::collections::HashMap<&str, &str> = [
+        ("Code.exe", "Visual Studio Code"),
+        ("chrome.exe", "Google Chrome"),
+        ("firefox.exe", "Mozilla Firefox"),
+        ("Discord.exe", "Discord"),
+        ("slack.exe", "Slack"),
+        ("notion.exe", "Notion"),
+        ("Figma.exe", "Figma"),
+        ("Photoshop.exe", "Adobe Photoshop"),
+        ("EXCEL.EXE", "Microsoft Excel"),
+        ("WINWORD.EXE", "Microsoft Word"),
+        ("POWERPNT.EXE", "Microsoft PowerPoint"),
+        ("Spotify.exe", "Spotify"),
+        ("steam.exe", "Steam"),
+        ("obs64.exe", "OBS Studio"),
+        ("Zoom.exe", "Zoom"),
+        ("Teams.exe", "Microsoft Teams"),
+        ("explorer.exe", "Windows Explorer"),
+        ("notepad.exe", "Notepad"),
+        ("calc.exe", "Calculator"),
+        ("mspaint.exe", "Paint"),
+        ("msedge.exe", "Microsoft Edge"),
+        ("brave.exe", "Brave Browser"),
+        ("opera.exe", "Opera Browser"),
+        ("thunderbird.exe", "Mozilla Thunderbird"),
+        ("OUTLOOK.EXE", "Microsoft Outlook"),
+        ("skype.exe", "Skype"),
+        ("telegram.exe", "Telegram"),
+        ("vlc.exe", "VLC Media Player"),
+        ("unity.exe", "Unity Editor"),
+        ("blender.exe", "Blender"),
+        ("autocad.exe", "AutoCAD"),
+        ("intellij64.exe", "IntelliJ IDEA"),
+        ("webstorm64.exe", "WebStorm"),
+        ("pycharm64.exe", "PyCharm"),
+        ("clion64.exe", "CLion"),
+        ("rider64.exe", "Rider"),
+        ("datagrip64.exe", "DataGrip"),
+        ("phpstorm64.exe", "PhpStorm"),
+        ("rubymine64.exe", "RubyMine"),
+        ("goland64.exe", "GoLand"),
+        ("rustrover64.exe", "RustRover"),
+    ].iter().cloned().collect();
+    
+    friendly_names.get(process_name).map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            // Convert process name to friendly format
+            process_name
+                .split('.')
+                .next()
+                .unwrap_or(process_name)
+                .split('_')
+                .map(|s| {
+                    let mut chars = s.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+}
