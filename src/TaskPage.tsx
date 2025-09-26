@@ -234,15 +234,17 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             </svg>
           </button>
         </div>
-        <button 
-          className="add-card-button"
-          onClick={() => console.log(`Add task to ${title}`)}
-        >
-          +
-        </button>
-        {getTasksByStatus(status).map(task => (
-          <TaskCard key={task.id} task={task} />
-        ))}
+        <div className="cards-container">
+          <button 
+            className="add-card-button"
+            onClick={() => console.log(`Add task to ${title}`)}
+          >
+            +
+          </button>
+          {getTasksByStatus(status).map(task => (
+            <TaskCard key={task.id} task={task} />
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -8,9 +8,9 @@ interface TeamMember {
   position: string;
   inProgressTasks: number;
   hoursTracked: number;
-  currentApp: string;
+  currentTask: string;
   currentUrl: string;
-  category: 'active' | 'break' | 'meeting' | 'offline';
+  category: 'frontend' | 'backend' | 'design' | 'management';
   avatar: string;
   status: 'online' | 'away' | 'busy' | 'offline';
 }
@@ -28,9 +28,9 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       position: 'Frontend Developer',
       inProgressTasks: 3,
       hoursTracked: 6.5,
-      currentApp: 'VS Code',
+      currentTask: 'Implement user dashboard',
       currentUrl: 'github.com/project',
-      category: 'active',
+      category: 'frontend',
       avatar: '👩‍💻',
       status: 'online'
     },
@@ -40,9 +40,9 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       position: 'Backend Developer',
       inProgressTasks: 2,
       hoursTracked: 7.2,
-      currentApp: 'Terminal',
+      currentTask: 'API optimization',
       currentUrl: 'api.docs',
-      category: 'active',
+      category: 'backend',
       avatar: '👨‍💻',
       status: 'online'
     },
@@ -52,9 +52,9 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       position: 'UI/UX Designer',
       inProgressTasks: 1,
       hoursTracked: 5.8,
-      currentApp: 'Figma',
+      currentTask: 'Mobile wireframes',
       currentUrl: 'figma.com/design',
-      category: 'active',
+      category: 'design',
       avatar: '👩‍🎨',
       status: 'online'
     },
@@ -64,9 +64,9 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       position: 'Product Manager',
       inProgressTasks: 4,
       hoursTracked: 8.1,
-      currentApp: 'Slack',
+      currentTask: 'Sprint planning',
       currentUrl: 'slack.com/channels',
-      category: 'meeting',
+      category: 'management',
       avatar: '👨‍💼',
       status: 'busy'
     },
@@ -76,9 +76,9 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       position: 'QA Engineer',
       inProgressTasks: 2,
       hoursTracked: 4.3,
-      currentApp: 'Chrome',
+      currentTask: 'Bug testing',
       currentUrl: 'test-app.com',
-      category: 'break',
+      category: 'backend',
       avatar: '👩‍🔬',
       status: 'away'
     },
@@ -88,24 +88,38 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       position: 'DevOps Engineer',
       inProgressTasks: 0,
       hoursTracked: 0,
-      currentApp: '',
+      currentTask: '',
       currentUrl: '',
-      category: 'offline',
+      category: 'backend',
       avatar: '👨‍🔧',
       status: 'offline'
     }
   ]);
 
   const [draggedMember, setDraggedMember] = useState<string | null>(null);
+  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, memberId: string) => {
     setDraggedMember(memberId);
     e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.classList.add('dragging');
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragEnd = (e: React.DragEvent) => {
+    e.currentTarget.classList.remove('dragging');
+    setDraggedMember(null);
+    setDragOverCategory(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, category: TeamMember['category']) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    setDragOverCategory(category);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverCategory(null);
   };
 
   const handleDrop = (e: React.DragEvent, newCategory: TeamMember['category']) => {
@@ -117,6 +131,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
         )
       );
       setDraggedMember(null);
+      setDragOverCategory(null);
     }
   };
 
@@ -144,77 +159,70 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
     }
   };
 
-  const TeamMemberCard = ({ member }: { member: TeamMember }) => (
-    <div
-      className="team-member-card"
-      draggable
-      onDragStart={(e) => handleDragStart(e, member.id)}
-    >
-      <div className="member-header">
-        <div className="member-avatar">
-          <span className="avatar-emoji">{member.avatar}</span>
-          <div 
-            className="status-indicator" 
-            style={{ backgroundColor: getStatusColor(member.status) }}
-          ></div>
-        </div>
-        <div className="member-info">
-          <h4 className="member-name">{member.name}</h4>
-          <p className="member-position">{member.position}</p>
-        </div>
-      </div>
-      
-      <div className="member-stats">
-        <div className="stat-item">
-          <span className="stat-label">Tasks</span>
-          <span className="stat-value">{member.inProgressTasks}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">Hours</span>
-          <span className="stat-value">{member.hoursTracked}h</span>
-        </div>
-      </div>
-      
-      {member.currentApp && (
-        <div className="current-activity">
-          <div className="activity-header">
-            <span className="activity-label">Currently using</span>
+  const TeamMemberCard = ({ member }: { member: TeamMember }) => {
+    const maxHours = 8; // Assuming 8 hours is the target
+    const progressPercentage = Math.min((member.hoursTracked / maxHours) * 100, 100);
+
+    return (
+      <div
+        className="team-member-card"
+        draggable
+        onDragStart={(e) => handleDragStart(e, member.id)}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="member-header">
+          <div className="member-avatar">
+            <span className="avatar-emoji">{member.avatar}</span>
+            <div 
+              className="status-indicator" 
+              style={{ backgroundColor: getStatusColor(member.status) }}
+            ></div>
           </div>
-          <div className="activity-content">
-            <span className="app-name">{member.currentApp}</span>
-            <span className="app-url">{member.currentUrl}</span>
+          <div className="member-info">
+            <h4 className="member-name">{member.name}</h4>
+            <p className="member-position">{member.position}</p>
           </div>
         </div>
-      )}
-    </div>
-  );
+        
+        <div className="progress-section">
+          <div className="progress-bar">
+            <div 
+              className="progress-fill" 
+              style={{ width: `${progressPercentage}%` }}
+            ></div>
+          </div>
+          <div className="progress-footer">
+            <span className="progress-hours">{member.hoursTracked}h / {maxHours}h</span>
+            <span className="progress-percentage">{Math.round(progressPercentage)}%</span>
+          </div>
+        </div>
+        
+        <div className="task-section">
+          {member.currentTask ? (
+            <div className="task-pill">
+              <span className="task-text">{member.currentTask}</span>
+            </div>
+          ) : (
+            <div className="task-pill-empty">
+              <span className="task-text-empty">No current task</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const CategoryColumn = ({ 
-    title, 
-    category, 
-    count,
-    color 
+    category
   }: { 
-    title: string; 
-    category: TeamMember['category']; 
-    count: number;
-    color: string;
+    category: TeamMember['category'];
   }) => (
     <div 
-      className="category-column"
-      onDragOver={handleDragOver}
+      className={`category-column ${dragOverCategory === category ? 'drag-over' : ''}`}
+      onDragOver={(e) => handleDragOver(e, category)}
+      onDragLeave={handleDragLeave}
       onDrop={(e) => handleDrop(e, category)}
     >
-      <div className="column-header">
-        <div className="column-title-section">
-          <div 
-            className="category-indicator" 
-            style={{ backgroundColor: color }}
-          ></div>
-          <h3 className="column-title">{title}</h3>
-        </div>
-        <span className="column-count">{count}</span>
-      </div>
       <div className="column-content">
         {getMembersByCategory(category).map(member => (
           <TeamMemberCard key={member.id} member={member} />
@@ -232,39 +240,65 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       />
       
       <div className="main-content">
-        <header className="main-header">
-          <h1>Team Management</h1>
-          <div className="header-actions">
-            <button className="btn-primary">Add Member</button>
+        <div className="teams-container">
+          <div className="teams-header">
+            <h1>Team Management</h1>
+            <div className="header-actions">
+              <button className="btn-secondary">Add Section</button>
+              <button className="btn-primary">Add Member</button>
+            </div>
           </div>
-        </header>
-        
-        <div className="content-area">
-          <div className="teams-grid">
-            <CategoryColumn 
-              title="Active" 
-              category="active" 
-              count={getMembersByCategory('active').length}
-              color="#007aff"
-            />
-            <CategoryColumn 
-              title="On Break" 
-              category="break" 
-              count={getMembersByCategory('break').length}
-              color="#ff9500"
-            />
-            <CategoryColumn 
-              title="In Meeting" 
-              category="meeting" 
-              count={getMembersByCategory('meeting').length}
-              color="#af52de"
-            />
-            <CategoryColumn 
-              title="Offline" 
-              category="offline" 
-              count={getMembersByCategory('offline').length}
-              color="#8e8e93"
-            />
+          
+          <div className="content-area">
+            <div className="teams-grid">
+              <div className="category-section">
+                <div className="category-title">
+                  <div className="category-title-section">
+                    <h3 className="category-title-text">Frontend</h3>
+                    <span className="category-count">{getMembersByCategory('frontend').length}</span>
+                  </div>
+                </div>
+                <CategoryColumn 
+                  category="frontend" 
+                />
+              </div>
+              
+              <div className="category-section">
+                <div className="category-title">
+                  <div className="category-title-section">
+                    <h3 className="category-title-text">Backend</h3>
+                    <span className="category-count">{getMembersByCategory('backend').length}</span>
+                  </div>
+                </div>
+                <CategoryColumn 
+                  category="backend" 
+                />
+              </div>
+              
+              <div className="category-section">
+                <div className="category-title">
+                  <div className="category-title-section">
+                    <h3 className="category-title-text">Design</h3>
+                    <span className="category-count">{getMembersByCategory('design').length}</span>
+                  </div>
+                </div>
+                <CategoryColumn 
+                  category="design" 
+                />
+              </div>
+              
+              <div className="category-section">
+                <div className="category-title">
+                  <div className="category-title-section">
+                    <h3 className="category-title-text">Management</h3>
+                    <span className="category-count">{getMembersByCategory('management').length}</span>
+                  </div>
+                </div>
+                <CategoryColumn 
+                  category="management" 
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
