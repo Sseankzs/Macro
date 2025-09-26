@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './RegisterAppsPage.css';
 import Sidebar from './Sidebar';
+import { invoke } from '@tauri-apps/api/core';
 
 interface App {
   id: string;
@@ -12,103 +13,43 @@ interface App {
   lastUsed?: string;
 }
 
+interface DetectedApp {
+  name: string;
+  process_name: string;
+  window_title?: string;
+  directory?: string;
+  is_active: boolean;
+  last_seen: string;
+}
+
 interface RegisterAppsPageProps {
   onLogout: () => void;
   onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
 }
 
 function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
-  const [apps, setApps] = useState<App[]>([
-    {
-      id: '1',
-      name: 'Visual Studio Code',
-      directory: '/Applications/Visual Studio Code.app',
-      icon: '💻',
-      isEnabled: true,
-      category: 'Development',
-      lastUsed: '2 hours ago'
-    },
-    {
-      id: '2',
-      name: 'Chrome',
-      directory: '/Applications/Google Chrome.app',
-      icon: '🌐',
-      isEnabled: true,
-      category: 'Browser',
-      lastUsed: '5 minutes ago'
-    },
-    {
-      id: '3',
-      name: 'Slack',
-      directory: '/Applications/Slack.app',
-      icon: '💬',
-      isEnabled: true,
-      category: 'Communication',
-      lastUsed: '1 hour ago'
-    },
-    {
-      id: '4',
-      name: 'Figma',
-      directory: '/Applications/Figma.app',
-      icon: '🎨',
-      isEnabled: false,
-      category: 'Design',
-      lastUsed: '3 days ago'
-    },
-    {
-      id: '5',
-      name: 'Terminal',
-      directory: '/Applications/Utilities/Terminal.app',
-      icon: '⚡',
-      isEnabled: true,
-      category: 'Development',
-      lastUsed: '30 minutes ago'
-    },
-    {
-      id: '6',
-      name: 'Spotify',
-      directory: '/Applications/Spotify.app',
-      icon: '🎵',
-      isEnabled: false,
-      category: 'Entertainment',
-      lastUsed: '1 week ago'
-    },
-    {
-      id: '7',
-      name: 'Xcode',
-      directory: '/Applications/Xcode.app',
-      icon: '📱',
-      isEnabled: true,
-      category: 'Development',
-      lastUsed: '4 hours ago'
-    },
-    {
-      id: '8',
-      name: 'Discord',
-      directory: '/Applications/Discord.app',
-      icon: '🎮',
-      isEnabled: false,
-      category: 'Communication',
-      lastUsed: '2 days ago'
-    }
-  ]);
+  const [apps, setApps] = useState<App[]>([]);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [availableApps] = useState([
-    { name: 'Visual Studio Code', directory: '/Applications/Visual Studio Code.app', icon: '💻' },
-    { name: 'Chrome', directory: '/Applications/Google Chrome.app', icon: '🌐' },
-    { name: 'Slack', directory: '/Applications/Slack.app', icon: '💬' },
-    { name: 'Figma', directory: '/Applications/Figma.app', icon: '🎨' },
-    { name: 'Terminal', directory: '/Applications/Utilities/Terminal.app', icon: '⚡' },
-    { name: 'Spotify', directory: '/Applications/Spotify.app', icon: '🎵' },
-    { name: 'Xcode', directory: '/Applications/Xcode.app', icon: '📱' },
-    { name: 'Discord', directory: '/Applications/Discord.app', icon: '🎮' },
-    { name: 'Safari', directory: '/Applications/Safari.app', icon: '🧭' },
-    { name: 'Mail', directory: '/Applications/Mail.app', icon: '📧' },
-    { name: 'Calendar', directory: '/Applications/Calendar.app', icon: '📅' },
-    { name: 'Notes', directory: '/Applications/Notes.app', icon: '📝' }
-  ]);
+  const [detectedApps, setDetectedApps] = useState<DetectedApp[]>([]);
+  const [isLoadingDetectedApps, setIsLoadingDetectedApps] = useState(false);
+
+  // Fetch detected apps when dropdown opens
+  const fetchDetectedApps = async () => {
+    try {
+      setIsLoadingDetectedApps(true);
+      const apps = await invoke<DetectedApp[]>('get_running_processes');
+      // Filter out background apps (only show active apps)
+      const activeApps = apps.filter(app => app.is_active);
+      setDetectedApps(activeApps);
+    } catch (error) {
+      console.error('Failed to fetch detected apps:', error);
+      setDetectedApps([]);
+    } finally {
+      setIsLoadingDetectedApps(false);
+    }
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -140,22 +81,62 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   };
 
 
-  const handleAddFromDropdown = (availableApp: { name: string; directory: string; icon: string }) => {
+  const handleDropdownToggle = () => {
+    if (!showDropdown) {
+      fetchDetectedApps();
+    }
+    setShowDropdown(!showDropdown);
+  };
+
+  const handleAddFromDropdown = (detectedApp: DetectedApp) => {
     // Check if app is already registered
-    const isAlreadyRegistered = apps.some(app => app.name === availableApp.name);
+    const isAlreadyRegistered = apps.some(app => app.name === detectedApp.name);
     if (isAlreadyRegistered) return;
 
     const newApp: App = {
       id: Date.now().toString(),
-      name: availableApp.name,
-      directory: availableApp.directory,
-      icon: availableApp.icon,
+      name: detectedApp.name,
+      directory: detectedApp.directory || 'Unknown location',
+      icon: getAppIcon(detectedApp.name),
       isEnabled: true,
-      category: 'Other',
+      category: 'Detected',
       lastUsed: 'Just added'
     };
     setApps(prevApps => [...prevApps, newApp]);
     setShowDropdown(false);
+  };
+
+  const getAppIcon = (appName: string): string => {
+    const iconMap: { [key: string]: string } = {
+      'Visual Studio Code': '💻',
+      'Code': '💻',
+      'Chrome': '🌐',
+      'Firefox': '🦊',
+      'Edge': '🌐',
+      'Safari': '🧭',
+      'Slack': '💬',
+      'Discord': '🎮',
+      'Teams': '👥',
+      'Zoom': '📹',
+      'Spotify': '🎵',
+      'Music': '🎵',
+      'Terminal': '⚡',
+      'PowerShell': '⚡',
+      'Command Prompt': '⚡',
+      'Notepad': '📝',
+      'Notepad++': '📝',
+      'Word': '📄',
+      'Excel': '📊',
+      'PowerPoint': '📈',
+      'Photoshop': '🎨',
+      'Figma': '🎨',
+      'Paint': '🎨',
+      'Calculator': '🧮',
+      'File Explorer': '📁',
+      'Explorer': '📁'
+    };
+    
+    return iconMap[appName] || '📱';
   };
 
   const getCategoryColor = (category: string) => {
@@ -224,29 +205,44 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
               <div className="dropdown-container" ref={dropdownRef}>
                 <div 
                   className="ios-dropdown"
-                  onClick={() => setShowDropdown(!showDropdown)}
+                  onClick={handleDropdownToggle}
                 >
                   <span className="dropdown-text">Add App</span>
                   <span className={`dropdown-arrow ${showDropdown ? 'open' : ''}`}>▼</span>
                 </div>
                 {showDropdown && (
                   <div className="dropdown-menu">
-                    {availableApps
-                      .filter(app => !apps.some(registeredApp => registeredApp.name === app.name))
-                      .map((app, index) => (
-                        <div
-                          key={index}
-                          className="dropdown-item"
-                          onClick={() => handleAddFromDropdown(app)}
-                        >
-                          <span className="dropdown-icon">{app.icon}</span>
-                          <span className="dropdown-name">{app.name}</span>
-                        </div>
-                      ))}
-                    {availableApps.filter(app => !apps.some(registeredApp => registeredApp.name === app.name)).length === 0 && (
-                      <div className="dropdown-empty">
-                        No available apps to add
+                    {isLoadingDetectedApps ? (
+                      <div className="dropdown-loading">
+                        <span className="loading-spinner">⏳</span>
+                        Detecting apps...
                       </div>
+                    ) : (
+                      <>
+                        {detectedApps
+                          .filter(app => !apps.some(registeredApp => registeredApp.name === app.name))
+                          .map((app, index) => (
+                            <div
+                              key={index}
+                              className="dropdown-item"
+                              onClick={() => handleAddFromDropdown(app)}
+                            >
+                              <span className="dropdown-icon">{getAppIcon(app.name)}</span>
+                              <div className="dropdown-app-info">
+                                <span className="dropdown-name">{app.name}</span>
+                                {app.window_title && (
+                                  <span className="dropdown-title">{app.window_title}</span>
+                                )}
+                                <span className="dropdown-process">{app.process_name}</span>
+                              </div>
+                            </div>
+                          ))}
+                        {detectedApps.filter(app => !apps.some(registeredApp => registeredApp.name === app.name)).length === 0 && (
+                          <div className="dropdown-empty">
+                            No detected apps available to add
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
