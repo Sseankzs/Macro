@@ -136,7 +136,7 @@ html, body {
 }
 
 .nav-item.active .nav-link {
-  background: #f8f9fa;
+  background: white;
   color: #495057;
   border: 1px solid #dee2e6;
 }

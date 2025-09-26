@@ -152,7 +152,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Tomorrow';
-    return `${diffDays} days`;
+    
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    return `${month} ${day}`;
   };
 
   const TaskCard = ({ task }: { task: Task }) => (
@@ -182,10 +185,23 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       </div>
       <h4 className="task-title">{task.title}</h4>
       <p className="task-description">{task.description}</p>
+      <div className="task-divider"></div>
       <div className="task-footer">
-        <span className="due-date">
-          {formatDate(task.dueDate)}
-        </span>
+        <div className="due-date-pill">
+          <svg className="flag-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+            <line x1="4" y1="22" x2="4" y2="15"/>
+          </svg>
+          <span className="due-date">
+            {formatDate(task.dueDate)}
+          </span>
+        </div>
+        <div className="attachment-pill">
+          <svg className="paperclip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.64 16.2a2 2 0 0 1-2.83-2.83l8.49-8.49"/>
+          </svg>
+          <span className="attachment-count">+2</span>
+        </div>
       </div>
     </div>
   );
