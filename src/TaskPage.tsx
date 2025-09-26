@@ -16,7 +16,7 @@ interface Task {
 
 interface TaskPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
 }
 
 function TaskPage({ onLogout, onPageChange }: TaskPageProps) {

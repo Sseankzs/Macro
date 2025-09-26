@@ -23,7 +23,7 @@ interface Metric {
 
 interface MetricBuilderPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
 }
 
 function MetricBuilderPage({ onLogout, onPageChange }: MetricBuilderPageProps) {

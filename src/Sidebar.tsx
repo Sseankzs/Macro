@@ -2,9 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import './Dashboard.css';
 
 interface SidebarProps {
-  currentPage: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder';
+  currentPage: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected';
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
 }
 
 function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
@@ -76,13 +76,13 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
       )
     },
     {
-      id: 'metric-builder' as const,
-      label: 'Metric',
+      id: 'detected' as const,
+      label: 'Detected',
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
+          <path d="M20.2 20.2L16 16m-8 0L3.8 3.8"/>
         </svg>
       )
     }

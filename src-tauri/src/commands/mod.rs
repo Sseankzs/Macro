@@ -691,3 +691,173 @@ pub async fn create_my_time_entry(
 ) -> Result<TimeEntry, String> {
     create_time_entry(db, get_default_user_id(), app_id, task_id, start_time, end_time, duration_seconds, is_active).await
 }
+
+// ===== PROCESS DETECTION COMMANDS =====
+
+use sysinfo::{System, Process};
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DetectedProcess {
+    pub name: String,
+    pub process_name: String,
+    pub window_title: Option<String>,
+    pub is_active: bool,
+    pub last_seen: String,
+}
+
+#[tauri::command]
+pub async fn get_running_processes() -> Result<Vec<DetectedProcess>, String> {
+    let mut system = System::new_all();
+    system.refresh_all();
+    
+    let mut processes = Vec::new();
+    let mut seen_processes = std::collections::HashSet::new();
+    let now = chrono::Utc::now().to_rfc3339();
+    
+    // Common background/system processes to filter out
+    let background_processes = [
+        "svchost.exe", "dwm.exe", "winlogon.exe", "csrss.exe", "smss.exe",
+        "wininit.exe", "services.exe", "lsass.exe", "conhost.exe",
+        "audiodg.exe", "dllhost.exe", "rundll32.exe", "taskhost.exe", "taskhostw.exe",
+        "sihost.exe", "ctfmon.exe", "WmiPrvSE.exe", "SearchIndexer.exe", "SearchProtocolHost.exe",
+        "SearchFilterHost.exe", "RuntimeBroker.exe", "Registry", "System", "Idle",
+        "Memory Compression", "Secure System", "System Interrupts", "spoolsv.exe",
+        "winlogon.exe", "csrss.exe", "smss.exe", "wininit.exe", "services.exe",
+        "lsass.exe", "audiodg.exe", "dllhost.exe", "rundll32.exe", "taskhost.exe",
+        "taskhostw.exe", "sihost.exe", "ctfmon.exe", "WmiPrvSE.exe", "SearchIndexer.exe",
+        "SearchProtocolHost.exe", "SearchFilterHost.exe", "RuntimeBroker.exe"
+    ];
+    
+    for (_pid, process) in system.processes() {
+        let process_name = process.name();
+        let exe_name = process.exe().and_then(|p| p.file_name()).unwrap_or_default();
+        
+        // Skip background/system processes
+        if background_processes.contains(&process_name) || 
+           background_processes.contains(&exe_name.to_string_lossy().as_ref()) ||
+           process_name.len() < 3 || // Skip very short process names
+           process_name.contains("Windows") ||
+           process_name.contains("Microsoft") ||
+           process_name.starts_with(".") ||
+           process_name.contains("Service") ||
+           process_name.contains("Host") ||
+           process_name.contains("Helper") ||
+           process_name.contains("Update") ||
+           process_name.contains("Installer") ||
+           process_name.contains("Setup") ||
+           process_name.contains("Background") {
+            continue;
+        }
+        
+        // Skip if we've already seen this process name (avoid duplicates)
+        if seen_processes.contains(process_name) {
+            continue;
+        }
+        seen_processes.insert(process_name.to_string());
+        
+        // Determine if process is "active" based on known patterns
+        let is_active = is_known_user_app(process_name);
+        
+        let detected_process = DetectedProcess {
+            name: get_friendly_name(process_name),
+            process_name: process_name.to_string(),
+            window_title: None, // Could be enhanced with window detection
+            is_active,
+            last_seen: now.clone(),
+        };
+        
+        processes.push(detected_process);
+    }
+    
+    // Sort by active status (active first), then alphabetically
+    processes.sort_by(|a, b| {
+        b.is_active.cmp(&a.is_active)
+            .then(a.name.cmp(&b.name))
+    });
+    
+    // Limit to top 30 processes to avoid overwhelming the UI
+    processes.truncate(30);
+    
+    Ok(processes)
+}
+
+fn is_known_user_app(process_name: &str) -> bool {
+    let user_apps = [
+        "code", "chrome", "firefox", "discord", "slack", "notion", "figma", 
+        "photoshop", "excel", "word", "powerpoint", "spotify", "steam", 
+        "obs", "zoom", "teams", "vscode", "notepad", "calc", "mspaint",
+        "edge", "brave", "opera", "safari", "thunderbird", "outlook",
+        "skype", "telegram", "whatsapp", "signal", "vlc", "media",
+        "adobe", "autocad", "blender", "unity", "godot", "android",
+        "xcode", "intellij", "webstorm", "pycharm", "clion", "rider",
+        "datagrip", "phpstorm", "rubymine", "goland", "rustrover"
+    ];
+    
+    let process_lower = process_name.to_lowercase();
+    user_apps.iter().any(|&app| process_lower.contains(app))
+}
+
+fn get_friendly_name(process_name: &str) -> String {
+    let friendly_names: std::collections::HashMap<&str, &str> = [
+        ("Code.exe", "Visual Studio Code"),
+        ("chrome.exe", "Google Chrome"),
+        ("firefox.exe", "Mozilla Firefox"),
+        ("Discord.exe", "Discord"),
+        ("slack.exe", "Slack"),
+        ("notion.exe", "Notion"),
+        ("Figma.exe", "Figma"),
+        ("Photoshop.exe", "Adobe Photoshop"),
+        ("EXCEL.EXE", "Microsoft Excel"),
+        ("WINWORD.EXE", "Microsoft Word"),
+        ("POWERPNT.EXE", "Microsoft PowerPoint"),
+        ("Spotify.exe", "Spotify"),
+        ("steam.exe", "Steam"),
+        ("obs64.exe", "OBS Studio"),
+        ("Zoom.exe", "Zoom"),
+        ("Teams.exe", "Microsoft Teams"),
+        ("explorer.exe", "Windows Explorer"),
+        ("notepad.exe", "Notepad"),
+        ("calc.exe", "Calculator"),
+        ("mspaint.exe", "Paint"),
+        ("msedge.exe", "Microsoft Edge"),
+        ("brave.exe", "Brave Browser"),
+        ("opera.exe", "Opera Browser"),
+        ("thunderbird.exe", "Mozilla Thunderbird"),
+        ("OUTLOOK.EXE", "Microsoft Outlook"),
+        ("skype.exe", "Skype"),
+        ("telegram.exe", "Telegram"),
+        ("vlc.exe", "VLC Media Player"),
+        ("unity.exe", "Unity Editor"),
+        ("blender.exe", "Blender"),
+        ("autocad.exe", "AutoCAD"),
+        ("intellij64.exe", "IntelliJ IDEA"),
+        ("webstorm64.exe", "WebStorm"),
+        ("pycharm64.exe", "PyCharm"),
+        ("clion64.exe", "CLion"),
+        ("rider64.exe", "Rider"),
+        ("datagrip64.exe", "DataGrip"),
+        ("phpstorm64.exe", "PhpStorm"),
+        ("rubymine64.exe", "RubyMine"),
+        ("goland64.exe", "GoLand"),
+        ("rustrover64.exe", "RustRover"),
+    ].iter().cloned().collect();
+    
+    friendly_names.get(process_name).map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            // Convert process name to friendly format
+            process_name
+                .split('.')
+                .next()
+                .unwrap_or(process_name)
+                .split('_')
+                .map(|s| {
+                    let mut chars = s.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+}

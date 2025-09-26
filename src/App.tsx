@@ -5,12 +5,13 @@ import TaskPage from './TaskPage'
 import TeamsPage from './TeamsPage'
 import RegisterAppsPage from './RegisterAppsPage'
 import MetricBuilderPage from './MetricBuilderPage'
+import DetectedPage from './DetectedPage'
 
 function App() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder'>('dashboard')
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected'>('dashboard')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,7 +25,7 @@ function App() {
     setCurrentPage('dashboard')
   }
 
-  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder') => {
+  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => {
     setCurrentPage(page)
   }
 
@@ -41,6 +42,9 @@ function App() {
     }
     if (currentPage === 'metric-builder') {
       return <MetricBuilderPage onLogout={handleLogout} onPageChange={handlePageChange} />
+    }
+    if (currentPage === 'detected') {
+      return <DetectedPage onLogout={handleLogout} onPageChange={handlePageChange} />
     }
     return <Dashboard onLogout={handleLogout} onPageChange={handlePageChange} />
   }
