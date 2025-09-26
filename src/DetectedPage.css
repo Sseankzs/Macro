@@ -286,6 +286,50 @@
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
 
+.app-directory {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.8rem;
+  color: #495057;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background: #f8f9fa;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.app-directory:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.app-directory-text {
+  display: inline-block;
+  white-space: nowrap;
+  transition: transform 0.3s ease;
+}
+
+.app-directory:hover .app-directory-text {
+  animation: scroll-text 6s linear infinite;
+}
+
+@keyframes scroll-text {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(0);
+  }
+  75% {
+    transform: translateX(calc(-100% + 180px));
+  }
+  100% {
+    transform: translateX(calc(-100% + 180px));
+  }
+}
+
 .app-window {
   margin: 0;
   font-size: 0.875rem;
