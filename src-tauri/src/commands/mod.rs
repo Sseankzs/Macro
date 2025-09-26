@@ -701,6 +701,7 @@ pub struct DetectedProcess {
     pub name: String,
     pub process_name: String,
     pub window_title: Option<String>,
+    pub directory: Option<String>,
     pub is_active: bool,
     pub last_seen: String,
 }
@@ -762,6 +763,7 @@ pub async fn get_running_processes() -> Result<Vec<DetectedProcess>, String> {
             name: get_friendly_name(process_name),
             process_name: process_name.to_string(),
             window_title: None, // Could be enhanced with window detection
+            directory: process.exe().map(|p| p.to_string_lossy().to_string()),
             is_active,
             last_seen: now.clone(),
         };

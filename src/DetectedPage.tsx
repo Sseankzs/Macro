@@ -7,6 +7,7 @@ interface DetectedApp {
   name: string;
   process_name: string;
   window_title?: string;
+  directory?: string;
   is_active: boolean;
   last_seen: string;
 }
@@ -47,6 +48,7 @@ function DetectedPage({ onLogout, onPageChange }: DetectedPageProps) {
     
     const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       app.process_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (app.directory && app.directory.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (app.window_title && app.window_title.toLowerCase().includes(searchTerm.toLowerCase()));
     
     return matchesFilter && matchesSearch;
@@ -64,6 +66,23 @@ function DetectedPage({ onLogout, onPageChange }: DetectedPageProps) {
     if (diffHours < 24) return `${diffHours}h ago`;
     const diffDays = Math.floor(diffHours / 24);
     return `${diffDays}d ago`;
+  };
+
+  const formatDirectory = (directory?: string) => {
+    if (!directory) return 'Unknown location';
+    
+    // Extract just the directory path (remove the executable name)
+    const path = directory.replace(/\\[^\\]*$/, ''); // Remove last part after last backslash
+    
+    // Show more of the path since we have scrolling animation
+    if (path.length > 80) {
+      const parts = path.split('\\');
+      if (parts.length > 4) {
+        return `...\\${parts.slice(-3).join('\\')}`;
+      }
+    }
+    
+    return path;
   };
 
   const getAppIcon = (appName: string) => {
@@ -177,6 +196,11 @@ function DetectedPage({ onLogout, onPageChange }: DetectedPageProps) {
                       </div>
                       <div className="app-info">
                         <h3 className="app-name">{app.name}</h3>
+                        {app.directory && (
+                          <p className="app-directory" title={app.directory}>
+                            <span className="app-directory-text">📁 {formatDirectory(app.directory)}</span>
+                          </p>
+                        )}
                         <p className="app-process">{app.process_name}</p>
                         {app.window_title && (
                           <p className="app-window">{app.window_title}</p>
