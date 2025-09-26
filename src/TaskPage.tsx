@@ -160,7 +160,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
 
   const TaskCard = ({ task }: { task: Task }) => (
     <div
-      className="task-card"
+      className="task-card task-page-card"
       draggable
       onDragStart={(e) => handleDragStart(e, task.id)}
     >
@@ -200,7 +200,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
           <svg className="paperclip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.64 16.2a2 2 0 0 1-2.83-2.83l8.49-8.49"/>
           </svg>
-          <span className="attachment-count">+2</span>
+          <span className="attachment-count">2</span>
         </div>
       </div>
     </div>
@@ -220,31 +220,29 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       onDragOver={handleDragOver}
       onDrop={(e) => handleDrop(e, status)}
     >
-      <div className="column-content">
-        <div className="column-header-inline">
-          <div className="column-title-section">
-            <h3 className="column-title">{title}</h3>
-            <span className="column-card-count">{count} cards</span>
-          </div>
-          <button className="column-actions" onClick={() => console.log(`Actions for ${title}`)}>
-            <svg className="ellipsis-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="1"/>
-              <circle cx="19" cy="12" r="1"/>
-              <circle cx="5" cy="12" r="1"/>
-            </svg>
-          </button>
+      <div className="column-header">
+        <div className="column-title-section">
+          <h3 className="column-title">{title}</h3>
+          <span className="column-card-count">{count} cards</span>
         </div>
-        <div className="cards-container">
-          <button 
-            className="add-card-button"
-            onClick={() => console.log(`Add task to ${title}`)}
-          >
-            +
-          </button>
-          {getTasksByStatus(status).map(task => (
-            <TaskCard key={task.id} task={task} />
-          ))}
-        </div>
+        <button className="column-actions" onClick={() => console.log(`Actions for ${title}`)}>
+          <svg className="ellipsis-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="1"/>
+            <circle cx="19" cy="12" r="1"/>
+            <circle cx="5" cy="12" r="1"/>
+          </svg>
+        </button>
+      </div>
+      <div className="column-content task-page-column-content">
+        <button 
+          className="add-card-button task-page-add-button"
+          onClick={() => console.log(`Add task to ${title}`)}
+        >
+          +
+        </button>
+        {getTasksByStatus(status).map(task => (
+          <TaskCard key={task.id} task={task} />
+        ))}
       </div>
     </div>
   );
