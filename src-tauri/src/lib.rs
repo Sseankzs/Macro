@@ -89,6 +89,8 @@ pub fn run() {
             get_my_time_entries,
             create_my_application,
             create_my_time_entry,
+            // Process detection commands
+            get_running_processes,
             // Utility commands
             test_database_connection,
         ])

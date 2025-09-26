@@ -14,7 +14,7 @@ interface App {
 
 interface RegisterAppsPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
 }
 
 function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
