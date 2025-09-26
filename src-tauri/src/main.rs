@@ -2,5 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  app_lib::run();
+    // Load environment variables from .env file
+    dotenv::dotenv().ok();
+    
+    app_lib::run();
 }

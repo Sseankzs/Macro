@@ -74,7 +74,35 @@
   display: flex;
   gap: 1rem;
   align-items: flex-start;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+
+/* Edit Mode Button */
+.edit-button {
+  background: #007aff;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  letter-spacing: -0.01em;
+  min-width: 60px;
+}
+
+.edit-button:hover {
+  background: #0056b3;
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.edit-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 122, 255, 0.3);
+}
+
 
 .dropdown-container {
   position: relative;
@@ -394,8 +422,9 @@
   border-radius: 12px;
   border: 0.5px solid rgba(0, 0, 0, 0.04);
   padding: 1.5rem;
-  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
 }
 
 .app-card:hover {
@@ -406,6 +435,17 @@
 
 .app-card.disabled {
   opacity: 0.6;
+}
+
+.app-card.edit-mode {
+  transform: scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: rgba(255, 59, 48, 0.2);
+}
+
+.app-card.edit-mode:hover {
+  transform: scale(0.99);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .app-header {
@@ -503,6 +543,47 @@
 
 .toggle-switch input:checked:hover + .toggle-slider {
   box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.3);
+}
+
+/* Delete Button - iOS Style */
+.delete-button {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 50%;
+  background: white;
+  color: #ff3b30;
+  border: 1px solid #e2e8f0;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: none;
+  line-height: 1;
+  z-index: 10;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.delete-button:hover {
+  background: white;
+  color: #d70015;
+  transform: scale(1.1);
+  box-shadow: none;
+}
+
+.delete-button:active {
+  transform: scale(0.95);
+  box-shadow: none;
 }
 
 
@@ -623,4 +704,178 @@
   .form-actions {
     flex-direction: column;
   }
+}
+
+/* Connection Status */
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-right: 0.5rem;
+}
+
+.connection-status.checking {
+  background: #f0f9ff;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.connection-status.connected {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.connection-status.disconnected {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.connection-status.error {
+  background: #fef3c7;
+  color: #d97706;
+  border: 1px solid #fed7aa;
+}
+
+.status-indicator {
+  font-size: 1rem;
+}
+
+/* Debug Button */
+.debug-button {
+  background: #ff9500;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  letter-spacing: -0.01em;
+  min-width: 60px;
+  margin-right: 0.5rem;
+}
+
+.debug-button:hover {
+  background: #e6850e;
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 8px rgba(255, 149, 0, 0.3);
+}
+
+.debug-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(255, 149, 0, 0.3);
+}
+
+/* Test Connection Button */
+.test-connection-button {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  letter-spacing: -0.01em;
+  min-width: 60px;
+  margin-right: 0.5rem;
+}
+
+.test-connection-button:hover {
+  background: #059669;
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.test-connection-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.3);
+}
+
+/* RLS Errors */
+.rls-errors {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 2rem;
+  color: #dc2626;
+}
+
+.rls-errors h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+}
+
+.rls-errors ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.rls-errors li {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+}
+
+.clear-rls-errors {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.clear-rls-errors:hover {
+  background: #b91c1c;
+}
+
+/* Debug Info */
+.debug-info {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 2rem;
+  color: #334155;
+}
+
+.debug-info h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+}
+
+.debug-info pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.clear-debug-info {
+  background: #64748b;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.clear-debug-info:hover {
+  background: #475569;
 }
