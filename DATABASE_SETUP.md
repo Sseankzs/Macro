@@ -9,12 +9,21 @@ This document explains how to set up your Supabase database for the Macro applic
 
 ## Environment Setup
 
-1. Copy `env.example` to `.env` in your project root
+1. Create a `.env` file in your project root
 2. Fill in your Supabase credentials:
    ```
    SUPABASE_URL=https://your-project-id.supabase.co
    SUPABASE_ANON_KEY=your-anon-key-here
+   
+   # Alternative Vite environment variables (for frontend)
+   VITE_SUPABASE_URL=https://your-project-id.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-publishable-key-here
    ```
+   
+   Note: The application will try to load environment variables in this order:
+   - SUPABASE_URL / SUPABASE_ANON_KEY (for backend)
+   - VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (for frontend)
+   - VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY (new default key)
 
 ## Database Schema
 

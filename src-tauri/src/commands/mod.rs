@@ -131,8 +131,14 @@ pub async fn update_user(
         .await
         .map_err(|e| format!("Failed to update user: {}", e))?;
 
-    let updated_user: User = response.json().await.map_err(|e| format!("Failed to parse updated user: {}", e))?;
-    Ok(updated_user)
+    // The response should be an array with the updated record
+    let updated_users: Vec<User> = response.json().await.map_err(|e| format!("Failed to parse updated user: {}", e))?;
+    
+    if let Some(updated_user) = updated_users.into_iter().next() {
+        Ok(updated_user)
+    } else {
+        Err("No user was updated".to_string())
+    }
 }
 
 // ===== TEAM COMMANDS =====
@@ -393,8 +399,14 @@ pub async fn update_task(
         .await
         .map_err(|e| format!("Failed to update task: {}", e))?;
 
-    let updated_task: Task = response.json().await.map_err(|e| format!("Failed to parse updated task: {}", e))?;
-    Ok(updated_task)
+    // The response should be an array with the updated record
+    let updated_tasks: Vec<Task> = response.json().await.map_err(|e| format!("Failed to parse updated task: {}", e))?;
+    
+    if let Some(updated_task) = updated_tasks.into_iter().next() {
+        Ok(updated_task)
+    } else {
+        Err("No task was updated".to_string())
+    }
 }
 
 // ===== APPLICATION COMMANDS =====
@@ -409,16 +421,14 @@ pub async fn create_application(
     category: Option<String>,
     is_tracked: Option<bool>,
 ) -> Result<Application, String> {
+    // Don't send id, created_at, updated_at, or last_used - let database handle these
     let application_data = json!({
-        "id": generate_id(),
         "name": name,
         "process_name": process_name,
         "icon_path": icon_path,
         "category": category,
-        "is_tracked": is_tracked.unwrap_or(false),
-        "user_id": user_id,
-        "created_at": now().to_rfc3339(),
-        "updated_at": now().to_rfc3339()
+        "is_tracked": is_tracked,
+        "user_id": user_id
     });
 
     let response = db
@@ -426,10 +436,15 @@ pub async fn create_application(
         .await
         .map_err(|e| format!("Failed to create application: {}", e))?;
 
-    let created_app: Application = serde_json::from_value(response)
+    // The response should be an array with the created record
+    let created_apps: Vec<Application> = serde_json::from_value(response)
         .map_err(|e| format!("Failed to parse created application: {}", e))?;
 
-    Ok(created_app)
+    if let Some(created_app) = created_apps.into_iter().next() {
+        Ok(created_app)
+    } else {
+        Err("No application was created".to_string())
+    }
 }
 
 #[tauri::command]
@@ -476,10 +491,18 @@ pub async fn update_application(
     if let Some(category) = category {
         update_data["category"] = json!(category);
     }
-    if let Some(is_tracked) = is_tracked {
-        update_data["is_tracked"] = json!(is_tracked);
+    // Handle is_tracked specially - we need to check if it was explicitly provided
+    // even if it's false, because Tauri might serialize false as None
+    if is_tracked.is_some() {
+        let tracked_value = is_tracked.unwrap();
+        println!("DEBUG: Setting is_tracked to: {}", tracked_value);
+        update_data["is_tracked"] = json!(tracked_value);
+    } else {
+        println!("DEBUG: is_tracked is None, not updating this field");
     }
 
+    println!("DEBUG: Update data being sent: {}", serde_json::to_string_pretty(&update_data).unwrap_or_else(|_| "Failed to serialize".to_string()));
+    
     let url = format!("{}/rest/v1/applications?id=eq.{}", db.base_url, app_id);
     let response = db.client
         .patch(&url)
@@ -492,8 +515,15 @@ pub async fn update_application(
         .await
         .map_err(|e| format!("Failed to update application: {}", e))?;
 
-    let updated_app: Application = response.json().await.map_err(|e| format!("Failed to parse updated application: {}", e))?;
-    Ok(updated_app)
+    // The response should be an array with the updated record
+    let updated_apps: Vec<Application> = response.json().await.map_err(|e| format!("Failed to parse updated application: {}", e))?;
+    
+    if let Some(updated_app) = updated_apps.into_iter().next() {
+        println!("DEBUG: Updated app from database: {:?}", updated_app);
+        Ok(updated_app)
+    } else {
+        Err("No application was updated".to_string())
+    }
 }
 
 // ===== TIME ENTRY COMMANDS =====
@@ -626,8 +656,14 @@ pub async fn update_time_entry(
         .await
         .map_err(|e| format!("Failed to update time entry: {}", e))?;
 
-    let updated_entry: TimeEntry = response.json().await.map_err(|e| format!("Failed to parse updated time entry: {}", e))?;
-    Ok(updated_entry)
+    // The response should be an array with the updated record
+    let updated_entries: Vec<TimeEntry> = response.json().await.map_err(|e| format!("Failed to parse updated time entry: {}", e))?;
+    
+    if let Some(updated_entry) = updated_entries.into_iter().next() {
+        Ok(updated_entry)
+    } else {
+        Err("No time entry was updated".to_string())
+    }
 }
 
 // ===== UTILITY COMMANDS =====
@@ -677,6 +713,57 @@ pub async fn create_my_application(
     is_tracked: Option<bool>,
 ) -> Result<Application, String> {
     create_application(db, name, process_name, get_default_user_id(), icon_path, category, is_tracked).await
+}
+
+#[tauri::command]
+pub async fn update_my_application(
+    db: State<'_, Database>,
+    app_id: String,
+    name: Option<String>,
+    process_name: Option<String>,
+    icon_path: Option<String>,
+    category: Option<String>,
+    is_tracked: Option<bool>,
+) -> Result<Application, String> {
+    println!("DEBUG: update_my_application called with app_id: {}, is_tracked: {:?}", app_id, is_tracked);
+    println!("DEBUG: All parameters - name: {:?}, process_name: {:?}, icon_path: {:?}, category: {:?}, is_tracked: {:?}", 
+             name, process_name, icon_path, category, is_tracked);
+    update_application(db, app_id, name, process_name, icon_path, category, is_tracked).await
+}
+
+#[tauri::command]
+pub async fn toggle_my_application_tracking(
+    db: State<'_, Database>,
+    app_id: String,
+    is_tracked: bool,
+) -> Result<Application, String> {
+    println!("DEBUG: toggle_my_application_tracking called with app_id: {}, is_tracked: {}", app_id, is_tracked);
+    update_application(db, app_id, None, None, None, None, Some(is_tracked)).await
+}
+
+#[tauri::command]
+pub async fn delete_my_application(
+    db: State<'_, Database>,
+    appId: String,
+) -> Result<(), String> {
+    println!("DEBUG: delete_my_application called with appId: {}", appId);
+    
+    let url = format!("{}/rest/v1/applications?id=eq.{}", db.base_url, appId);
+    let response = db.client
+        .delete(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to delete application: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("HTTP error {}: {}", status, error_text));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

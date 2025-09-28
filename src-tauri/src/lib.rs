@@ -88,6 +88,9 @@ pub fn run() {
             get_my_tasks,
             get_my_time_entries,
             create_my_application,
+            update_my_application,
+            toggle_my_application_tracking,
+            delete_my_application,
             create_my_time_entry,
             // Process detection commands
             get_running_processes,

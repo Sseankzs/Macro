@@ -23,6 +23,9 @@ impl Database {
     pub async fn test_connection(&self) -> Result<bool> {
         // Test the connection by making a simple request
         let url = format!("{}/rest/v1/", self.base_url);
+        log::info!("Testing connection to: {}", url);
+        log::info!("Using API key: {}...", &self.api_key[..std::cmp::min(10, self.api_key.len())]);
+        
         let response = self.client
             .get(&url)
             .header("apikey", &self.api_key)
@@ -31,8 +34,22 @@ impl Database {
             .await;
 
         match response {
-            Ok(resp) => Ok(resp.status().is_success()),
-            Err(_) => Ok(false),
+            Ok(resp) => {
+                let status = resp.status();
+                log::info!("Connection test response status: {}", status);
+                if status.is_success() {
+                    log::info!("Database connection successful");
+                    Ok(true)
+                } else {
+                    let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                    log::error!("Database connection failed with status {}: {}", status, error_text);
+                    Ok(false)
+                }
+            },
+            Err(e) => {
+                log::error!("Database connection error: {}", e);
+                Ok(false)
+            },
         }
     }
 
@@ -73,14 +90,15 @@ impl Database {
 // Data models based on your schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
-    pub id: String,
+    pub id: String, // UUID as string
     pub name: String,
-    pub email: String,
+    pub email: Option<String>, // Make optional to match database schema
     pub team_id: Option<String>,
     pub current_project_id: Option<String>,
     pub role: UserRole,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
+    pub image_url: Option<String>, // Add missing field from database
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,15 +157,16 @@ pub enum TaskPriority {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Application {
-    pub id: String,
+    pub id: String, // UUID as string
     pub name: String,
     pub process_name: String,
     pub icon_path: Option<String>,
     pub category: Option<String>,
-    pub is_tracked: bool,
-    pub user_id: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub is_tracked: bool, // Boolean field with default false
+    pub user_id: Option<String>, // Make optional to match database schema
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
+    pub last_used: Option<chrono::DateTime<chrono::Utc>>, // Add missing field from database
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

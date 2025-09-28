@@ -6,11 +6,14 @@ import { invoke } from '@tauri-apps/api/core';
 interface App {
   id: string;
   name: string;
-  directory: string;
-  icon: string;
-  isEnabled: boolean;
-  category: string;
-  lastUsed?: string;
+  process_name: string;
+  icon_path?: string;
+  category?: string;
+  is_tracked?: boolean;
+  user_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  last_used?: string;
 }
 
 interface DetectedApp {
@@ -98,7 +101,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         environment: {
           nodeEnv: import.meta.env.MODE,
           hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
-          hasSupabaseKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+          hasSupabaseKey: !!import.meta.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY
         }
       };
 
@@ -152,6 +155,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
       
       const apps = await invoke<App[]>('get_my_applications');
       console.log('✅ Successfully fetched apps:', apps);
+      console.log('📱 App is_tracked values:', apps.map(app => ({ name: app.name, is_tracked: app.is_tracked, type: typeof app.is_tracked })));
       setApps(apps);
     } catch (error) {
       console.error('❌ Failed to fetch apps:', error);
@@ -248,21 +252,62 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         return;
       }
 
-      console.log('📱 App details:', { name: app.name, currentStatus: app.isEnabled });
-
-      await invoke('update_my_application', {
-        appId: appId,
-        isTracked: !app.isEnabled
+      const currentStatus = app.is_tracked ?? false;
+      const newStatus = !currentStatus;
+      
+      console.log('🔍 DEBUG TOGGLE START:', {
+        appId,
+        appName: app.name,
+        originalIsTracked: app.is_tracked,
+        originalType: typeof app.is_tracked,
+        currentStatus,
+        currentStatusType: typeof currentStatus,
+        newStatus,
+        newStatusType: typeof newStatus
       });
+
+      const payload = {
+        appId: appId,
+        is_tracked: Boolean(newStatus)  // Explicitly convert to boolean
+      };
+
+      console.log('🚀 SENDING PAYLOAD:', payload);
+      console.log('🚀 PAYLOAD TYPES:', {
+        appIdType: typeof payload.appId,
+        isTrackedType: typeof payload.is_tracked,
+        isTrackedValue: payload.is_tracked,
+        isTrackedExplicit: Boolean(payload.is_tracked)
+      });
+      console.log('🚀 PAYLOAD JSON:', JSON.stringify(payload, null, 2));
+
+      const result = await invoke('toggle_my_application_tracking', {
+        appId: appId,
+        isTracked: Boolean(newStatus)
+      });
+      
+      console.log('📥 BACKEND RESULT:', result);
+      console.log('📥 RESULT TYPE:', typeof result);
+      console.log('📥 RESULT IS_TRACKED:', (result as any)?.is_tracked);
 
       console.log('✅ App status updated successfully');
 
       // Update local state
-      setApps(prevApps =>
-        prevApps.map(app =>
-          app.id === appId ? { ...app, isEnabled: !app.isEnabled } : app
-        )
-      );
+      setApps(prevApps => {
+        console.log('🔄 UPDATING STATE - Before:', prevApps.find(app => app.id === appId));
+        
+        const updatedApps = prevApps.map(app =>
+          app.id === appId ? { ...app, is_tracked: newStatus } : app
+        );
+        
+        const updatedApp = updatedApps.find(app => app.id === appId);
+        console.log('🔄 UPDATING STATE - After:', {
+          name: updatedApp?.name, 
+          newStatus: updatedApp?.is_tracked,
+          newStatusType: typeof updatedApp?.is_tracked
+        });
+        
+        return updatedApps;
+      });
       
       setError(null);
     } catch (error) {
@@ -298,7 +343,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
 
       console.log('📱 Deleting app:', { name: app.name, id: appId });
 
-      await invoke('delete_my_application', { appId });
+      await invoke('delete_my_application', { appId: appId });
       
       console.log('✅ App deleted successfully');
       
@@ -339,7 +384,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         name: detectedApp.name,
         processName: detectedApp.process_name,
         windowTitle: detectedApp.window_title,
-        directory: detectedApp.directory,
+        process_name: detectedApp.process_name,
         isActive: detectedApp.is_active
       });
 
@@ -371,10 +416,10 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
 
       const newApp = await invoke<App>('create_my_application', {
         name: detectedApp.name,
-        processName: detectedApp.process_name,
-        iconPath: null,
+        process_name: detectedApp.process_name,
+        icon_path: null,
         category: 'Detected',
-        isTracked: true
+        is_tracked: true
       });
 
       console.log('✅ Successfully created app:', newApp);
@@ -397,7 +442,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         setRlsErrors(prev => [...prev, rlsError]);
         setError(`RLS Error: ${rlsError}`);
       } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-        const authError = 'Authentication Error: Invalid Supabase credentials. Check your .env file for correct SUPABASE_URL and SUPABASE_ANON_KEY.';
+        const authError = 'Authentication Error: Invalid Supabase credentials. Check your .env file for correct SUPABASE_URL and SUPABASE_ANON_KEY (or VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY).';
         setRlsErrors(prev => [...prev, authError]);
         setError(`Auth Error: ${authError}`);
       } else if (errorMessage.includes('database') || errorMessage.includes('connection')) {
@@ -447,11 +492,11 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
     return iconMap[appName] || '📱';
   };
 
-  const getEnabledCount = () => apps.filter(app => app.isEnabled).length;
+  const getEnabledCount = () => apps.filter(app => app.is_tracked ?? false).length;
   const getTotalCount = () => apps.length;
 
   const AppCard = ({ app }: { app: App }) => (
-    <div className={`app-card ${!app.isEnabled ? 'disabled' : ''} ${isEditMode ? 'edit-mode' : ''}`}>
+    <div className={`app-card ${!(app.is_tracked ?? false) ? 'disabled' : ''} ${isEditMode ? 'edit-mode' : ''}`}>
       {isEditMode && (
         <button 
           className="delete-button"
@@ -464,14 +509,14 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
       <div className="app-header">
         <div className="app-info">
           <h4 className="app-name">{app.name}</h4>
-          <p className="app-directory">{app.directory}</p>
+          <p className="app-directory">{app.process_name}</p>
         </div>
         <div className="app-actions">
           {!isEditMode && (
             <label className="toggle-switch">
               <input
                 type="checkbox"
-                checked={app.isEnabled}
+                checked={app.is_tracked ?? false}
                 onChange={() => handleToggleApp(app.id)}
               />
               <span className="toggle-slider"></span>
@@ -482,8 +527,8 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
       
       <div className="app-details">
         <div className="app-meta">
-          {app.lastUsed && (
-            <span className="last-used">Last used: {app.lastUsed}</span>
+          {app.last_used && (
+            <span className="last-used">Last used: {app.last_used}</span>
           )}
         </div>
       </div>
