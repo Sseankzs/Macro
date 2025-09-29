@@ -3,14 +3,25 @@ import { invoke } from '@tauri-apps/api/core';
 import './Dashboard.css';
 import Sidebar from './Sidebar';
 
+interface CurrentActivity {
+  app_name: string;
+  app_category: string;
+  start_time: string;
+  duration_minutes: number;
+  duration_hours: number;
+  is_active: boolean;
+  active_apps_count: number;
+}
+
 interface DashboardProps {
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
 }
 
 function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   const [user, setUser] = useState<{ name: string } | null>(null);
   const [selectedTimePeriod, setSelectedTimePeriod] = useState<'today' | 'week' | 'month'>('week');
+  const [currentActivity, setCurrentActivity] = useState<CurrentActivity | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -25,6 +36,23 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     };
 
     fetchUser();
+  }, []);
+
+  useEffect(() => {
+    // Update current activity every 5 seconds
+    const interval = setInterval(async () => {
+      try {
+        const activity = await invoke('get_current_activity') as CurrentActivity | null;
+        setCurrentActivity(activity);
+      } catch (error) {
+        console.error('Failed to get current activity:', error);
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
+      // Note: Activity tracking is now managed at App level, not here
+    };
   }, []);
 
   const handleTimePeriodChange = (period: 'today' | 'week' | 'month') => {
@@ -53,6 +81,53 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
           <div className="stats-section">
             <h2 className="section-title">Today's Overview</h2>
             <div className="stats-grid">
+              {/* Current Activity Card - Leftmost */}
+              <div className="stat-card ios-card current-activity-card">
+                <div className="stat-header">
+                  <h3>Current Activity</h3>
+                  <span className="stat-period">
+                    {currentActivity ? 'active' : 'idle'}
+                  </span>
+                </div>
+                <div className="stat-main">
+                  {currentActivity ? (
+                    <div className="activity-info">
+                      <div className="app-info">
+                        <div className="app-icon">💻</div>
+                        <div className="app-details">
+                          <span className="app-name">{currentActivity.app_name}</span>
+                          <span className="app-time">
+                            {currentActivity.duration_hours > 0 
+                              ? `${currentActivity.duration_hours}h ${currentActivity.duration_minutes % 60}m`
+                              : `${currentActivity.duration_minutes}m`
+                            }
+                          </span>
+                        </div>
+                      </div>
+                      <div className="activity-status">
+                        <span className={`status-indicator ${currentActivity.is_active ? 'active' : 'inactive'}`}>
+                          {currentActivity.is_active ? '●' : '○'}
+                        </span>
+                        <span className="status-text">
+                          {currentActivity.active_apps_count > 1 
+                            ? `${currentActivity.active_apps_count} apps active`
+                            : 'Active'
+                          }
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="no-activity">
+                      <span className="no-activity-text">No tracked apps running</span>
+                      <span className="no-activity-subtitle">Enable tracking for apps in Register Apps</span>
+                    </div>
+                  )}
+                </div>
+                <div className="stat-subtitle">
+                  {currentActivity ? currentActivity.app_category : 'Enable app tracking'}
+                </div>
+              </div>
+
               <div className="stat-card ios-card">
                 <div className="stat-header">
                   <h3>Hours Tracked Today</h3>

@@ -2,11 +2,11 @@ mod commands;
 mod config;
 mod database;
 mod default_user;
+mod tracking;
 
 use commands::*;
-use config::SupabaseConfig;
-use database::Database;
-use tauri::Manager;
+use tracking::{start_activity_tracking, stop_activity_tracking, update_activity, get_current_activity, get_active_applications_count, stop_tracking_for_app, stop_tracking_for_app_by_id};
+use tauri::Listener;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,34 +21,20 @@ pub fn run() {
                 )?;
             }
 
-            // Initialize Supabase database
-            let supabase_config = match SupabaseConfig::from_env() {
-                Ok(config) => config,
-                Err(e) => {
-                    log::warn!("Failed to load Supabase config from environment: {}", e);
-                    // You might want to provide default values or handle this differently
-                    SupabaseConfig::new(
-                        "https://your-project.supabase.co".to_string(),
-                        "your-anon-key".to_string(),
-                    )
-                }
-            };
-
-            let database = Database::new(supabase_config.url, supabase_config.anon_key)
-                .expect("Failed to initialize database");
-
-            // Test database connection
-            let db_clone = database.clone();
-            tauri::async_runtime::spawn(async move {
-                match db_clone.test_connection().await {
-                    Ok(true) => log::info!("Database connection successful"),
-                    Ok(false) => log::warn!("Database connection test failed"),
-                    Err(e) => log::error!("Database connection error: {}", e),
+            // Set up cleanup when app is about to close
+            app.handle().listen("tauri://close-requested", move |_event| {
+                // Stop all activity tracking when the app is closing
+                if let Some(tracker) = crate::tracking::get_tracker() {
+                    let rt = tokio::runtime::Handle::current();
+                    rt.block_on(async {
+                        if let Err(e) = tracker.stop_tracking().await {
+                            eprintln!("Error stopping tracking on app close: {}", e);
+                        } else {
+                            println!("Activity tracking stopped on app close");
+                        }
+                    });
                 }
             });
-
-            // Manage the database state
-            app.manage(database);
 
             Ok(())
         })
@@ -94,8 +80,17 @@ pub fn run() {
             create_my_time_entry,
             // Process detection commands
             get_running_processes,
+            // Activity tracking commands
+            start_activity_tracking,
+            stop_activity_tracking,
+            update_activity,
+            get_current_activity,
+            get_active_applications_count,
+            stop_tracking_for_app,
+            stop_tracking_for_app_by_id,
             // Utility commands
             test_database_connection,
+            initialize_database_and_login,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

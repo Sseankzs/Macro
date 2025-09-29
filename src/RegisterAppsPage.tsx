@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import './RegisterAppsPage.css';
 import Sidebar from './Sidebar';
 import { invoke } from '@tauri-apps/api/core';
+import { formatForTable } from './utils';
 
 interface App {
   id: string;
@@ -27,14 +28,13 @@ interface DetectedApp {
 
 interface RegisterAppsPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
 }
 
 function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   const [apps, setApps] = useState<App[]>([]);
   const [isLoadingApps, setIsLoadingApps] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected' | 'error'>('checking');
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [rlsErrors, setRlsErrors] = useState<string[]>([]);
 
@@ -44,47 +44,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   const [detectedApps, setDetectedApps] = useState<DetectedApp[]>([]);
   const [isLoadingDetectedApps, setIsLoadingDetectedApps] = useState(false);
 
-  // Test database connection and check for RLS issues
-  const testDatabaseConnection = async () => {
-    try {
-      console.log('🔍 Testing database connection...');
-      setConnectionStatus('checking');
-      
-      const isConnected = await invoke<boolean>('test_database_connection');
-      
-      if (isConnected) {
-        console.log('✅ Database connection successful');
-        setConnectionStatus('connected');
-        setError(null);
-      } else {
-        console.log('❌ Database connection failed');
-        setConnectionStatus('disconnected');
-        setError('Database connection failed');
-      }
-    } catch (error) {
-      console.error('🚨 Database connection error:', error);
-      setConnectionStatus('error');
-      
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // Check for specific RLS errors
-      if (errorMessage.includes('42501') || errorMessage.includes('row-level security')) {
-        const rlsError = 'Row Level Security (RLS) policy violation. Check if user exists and has proper permissions.';
-        setRlsErrors(prev => [...prev, rlsError]);
-        setError(`RLS Error: ${rlsError}`);
-      } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-        const authError = 'Authentication failed. Check Supabase credentials in .env file.';
-        setRlsErrors(prev => [...prev, authError]);
-        setError(`Auth Error: ${authError}`);
-      } else if (errorMessage.includes('network') || errorMessage.includes('timeout')) {
-        const networkError = 'Network connection issue. Check internet connection and Supabase URL.';
-        setRlsErrors(prev => [...prev, networkError]);
-        setError(`Network Error: ${networkError}`);
-      } else {
-        setError(`Database Error: ${errorMessage}`);
-      }
-    }
-  };
 
   // Enhanced debug function
   const collectDebugInfo = async () => {
@@ -93,7 +52,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
       
       const debugData: any = {
         timestamp: new Date().toISOString(),
-        connectionStatus,
         apps: apps.length,
         detectedApps: detectedApps.length,
         error: error,
@@ -131,15 +89,12 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
     }
   };
 
-  // Load apps on component mount with enhanced error handling
+  // Load apps on component mount - no need to test database connection
   useEffect(() => {
     const initializePage = async () => {
       console.log('🚀 Initializing RegisterAppsPage...');
       
-      // First test database connection
-      await testDatabaseConnection();
-      
-      // Then try to load apps
+      // Only load apps - database connection is already established by Dashboard
       await fetchApps();
     };
     
@@ -416,10 +371,10 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
 
       const newApp = await invoke<App>('create_my_application', {
         name: detectedApp.name,
-        process_name: detectedApp.process_name,
-        icon_path: null,
+        processName: detectedApp.process_name,
+        iconPath: null,
         category: 'Detected',
-        is_tracked: true
+        isTracked: true
       });
 
       console.log('✅ Successfully created app:', newApp);
@@ -528,7 +483,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
       <div className="app-details">
         <div className="app-meta">
           {app.last_used && (
-            <span className="last-used">Last used: {app.last_used}</span>
+            <span className="last-used">Last used: {formatForTable(app.last_used)}</span>
           )}
         </div>
       </div>
@@ -555,21 +510,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
               </p>
             </div>
             <div className="header-actions">
-              {/* Connection Status Indicator */}
-              <div className={`connection-status ${connectionStatus}`}>
-                <span className="status-indicator">
-                  {connectionStatus === 'checking' && '🔄'}
-                  {connectionStatus === 'connected' && '✅'}
-                  {connectionStatus === 'disconnected' && '❌'}
-                  {connectionStatus === 'error' && '🚨'}
-                </span>
-                <span className="status-text">
-                  {connectionStatus === 'checking' && 'Checking...'}
-                  {connectionStatus === 'connected' && 'Connected'}
-                  {connectionStatus === 'disconnected' && 'Disconnected'}
-                  {connectionStatus === 'error' && 'Error'}
-                </span>
-              </div>
 
               {/* Debug Button */}
               <button 
@@ -580,14 +520,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
                 🐛 Debug
               </button>
 
-              {/* Test Connection Button */}
-              <button 
-                className="test-connection-button"
-                onClick={testDatabaseConnection}
-                title="Test database connection"
-              >
-                🔗 Test DB
-              </button>
 
               <button 
                 className="edit-button"

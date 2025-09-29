@@ -3,7 +3,7 @@ use crate::database::{
 };
 use crate::default_user::{get_default_user, get_default_user_id};
 use serde_json::json;
-use tauri::State;
+use tauri::{State, Manager};
 
 // Helper function to generate UUID strings
 fn generate_id() -> String {
@@ -673,6 +673,48 @@ pub async fn test_database_connection(db: State<'_, Database>) -> Result<bool, S
     db.test_connection().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn initialize_database_and_login(
+    app_handle: tauri::AppHandle,
+    _email: String,
+    _password: String,
+) -> Result<bool, String> {
+    // Load Supabase configuration
+    let supabase_config = match crate::config::SupabaseConfig::from_env() {
+        Ok(config) => config,
+        Err(e) => {
+            log::warn!("Failed to load Supabase config from environment: {}", e);
+            return Err(format!("Failed to load database configuration: {}", e));
+        }
+    };
+
+    // Initialize database
+    let database = Database::new(supabase_config.url, supabase_config.anon_key)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    // Test database connection
+    match database.test_connection().await {
+        Ok(true) => {
+            log::info!("Database connection successful");
+        }
+        Ok(false) => {
+            return Err("Database connection test failed".to_string());
+        }
+        Err(e) => {
+            return Err(format!("Database connection error: {}", e));
+        }
+    }
+
+    // Manage the database state
+    app_handle.manage(database.clone());
+
+    // Initialize the activity tracker
+    crate::tracking::init_tracker(database);
+
+    log::info!("Database initialized successfully");
+    Ok(true)
+}
+
 // ===== DEFAULT USER CONVENIENCE COMMANDS =====
 
 #[tauri::command]
@@ -728,6 +770,18 @@ pub async fn update_my_application(
     println!("DEBUG: update_my_application called with app_id: {}, is_tracked: {:?}", app_id, is_tracked);
     println!("DEBUG: All parameters - name: {:?}, process_name: {:?}, icon_path: {:?}, category: {:?}, is_tracked: {:?}", 
              name, process_name, icon_path, category, is_tracked);
+    
+    // If is_tracked is being set to false, stop tracking for this app
+    if let Some(false) = is_tracked {
+        if let Some(tracker) = crate::tracking::get_tracker() {
+            if let Err(e) = tracker.stop_tracking_for_app_by_id(&app_id).await {
+                println!("Warning: Failed to stop tracking for app {}: {}", app_id, e);
+            } else {
+                println!("Stopped tracking for app {} because is_tracked was set to false", app_id);
+            }
+        }
+    }
+    
     update_application(db, app_id, name, process_name, icon_path, category, is_tracked).await
 }
 
@@ -738,6 +792,18 @@ pub async fn toggle_my_application_tracking(
     is_tracked: bool,
 ) -> Result<Application, String> {
     println!("DEBUG: toggle_my_application_tracking called with app_id: {}, is_tracked: {}", app_id, is_tracked);
+    
+    // If is_tracked is being set to false, stop tracking for this app
+    if !is_tracked {
+        if let Some(tracker) = crate::tracking::get_tracker() {
+            if let Err(e) = tracker.stop_tracking_for_app_by_id(&app_id).await {
+                println!("Warning: Failed to stop tracking for app {}: {}", app_id, e);
+            } else {
+                println!("Stopped tracking for app {} because is_tracked was toggled to false", app_id);
+            }
+        }
+    }
+    
     update_application(db, app_id, None, None, None, None, Some(is_tracked)).await
 }
 
@@ -781,7 +847,7 @@ pub async fn create_my_time_entry(
 
 // ===== PROCESS DETECTION COMMANDS =====
 
-use sysinfo::{System, Process};
+use sysinfo::System;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DetectedProcess {
@@ -843,13 +909,13 @@ pub async fn get_running_processes() -> Result<Vec<DetectedProcess>, String> {
         }
         seen_processes.insert(process_name.to_string());
         
-        // Determine if process is "active" based on known patterns
-        let is_active = is_known_user_app(process_name);
+        // Determine if process is "active" based on known patterns and additional criteria
+        let is_active = is_known_user_app(process_name) || is_likely_user_app(process_name, &process);
         
         let detected_process = DetectedProcess {
             name: get_friendly_name(process_name),
             process_name: process_name.to_string(),
-            window_title: None, // Could be enhanced with window detection
+            window_title: None, // Could be enhanced with window 
             directory: process.exe().map(|p| p.to_string_lossy().to_string()),
             is_active,
             last_seen: now.clone(),
@@ -879,11 +945,79 @@ fn is_known_user_app(process_name: &str) -> bool {
         "skype", "telegram", "whatsapp", "signal", "vlc", "media",
         "adobe", "autocad", "blender", "unity", "godot", "android",
         "xcode", "intellij", "webstorm", "pycharm", "clion", "rider",
-        "datagrip", "phpstorm", "rubymine", "goland", "rustrover"
+        "datagrip", "phpstorm", "rubymine", "goland", "rustrover",
+        "cursor", "atom", "sublime", "vim", "emacs", "neovim",
+        "terminal", "powershell", "cmd", "bash", "zsh", "fish",
+        "git", "docker", "kubernetes", "postman", "insomnia",
+        "mongodb", "mysql", "postgres", "redis", "elasticsearch",
+        "node", "npm", "yarn", "pnpm", "python", "java", "go", "rust",
+        "react", "vue", "angular", "svelte", "next", "nuxt",
+        "webpack", "vite", "rollup", "parcel", "esbuild"
     ];
     
     let process_lower = process_name.to_lowercase();
     user_apps.iter().any(|&app| process_lower.contains(app))
+}
+
+fn is_likely_user_app(process_name: &str, process: &sysinfo::Process) -> bool {
+    let process_lower = process_name.to_lowercase();
+    
+    // Check for common patterns that indicate user applications
+    let user_patterns = [
+        // Development tools
+        "studio", "builder", "editor", "ide", "dev", "debug",
+        // Media applications
+        "player", "media", "music", "video", "photo", "image",
+        // Communication tools
+        "chat", "messenger", "call", "meeting", "conference",
+        // Productivity tools
+        "office", "document", "spreadsheet", "presentation",
+        // Gaming
+        "game", "launcher", "client", "platform",
+        // Design tools
+        "design", "draw", "paint", "sketch", "vector",
+        // Browsers and web tools
+        "browser", "web", "http", "url", "link",
+        // File management
+        "explorer", "finder", "manager", "organizer",
+        // System utilities (but not system services)
+        "utility", "tool", "helper", "assistant", "wizard"
+    ];
+    
+    // Check if the process name contains user-friendly patterns
+    let has_user_pattern = user_patterns.iter().any(|&pattern| process_lower.contains(pattern));
+    
+    // Check if it's a GUI application (has a window)
+    let has_window = process.exe().is_some() && !process_lower.contains("service");
+    
+    // Check if it's not a system process
+    let not_system_process = !process_lower.contains("system") && 
+                           !process_lower.contains("kernel") &&
+                           !process_lower.contains("driver") &&
+                           !process_lower.contains("dll") &&
+                           !process_lower.contains("exe") ||
+                           process_lower.ends_with(".exe");
+    
+    // Check if it has a reasonable process name length (not too short, not too long)
+    let reasonable_length = process_name.len() >= 4 && process_name.len() <= 50;
+    
+    // Check if it's not a temporary or cache process
+    let not_temporary = !process_lower.contains("temp") &&
+                       !process_lower.contains("cache") &&
+                       !process_lower.contains("tmp") &&
+                       !process_lower.contains("log");
+    
+    // A process is likely a user app if it meets multiple criteria
+    let criteria_met = [
+        has_user_pattern,
+        has_window,
+        not_system_process,
+        reasonable_length,
+        not_temporary
+    ].iter().filter(|&&x| x).count();
+    
+    // Require at least 3 out of 5 criteria to be met
+    criteria_met >= 3
 }
 
 fn get_friendly_name(process_name: &str) -> String {
@@ -929,6 +1063,36 @@ fn get_friendly_name(process_name: &str) -> String {
         ("rubymine64.exe", "RubyMine"),
         ("goland64.exe", "GoLand"),
         ("rustrover64.exe", "RustRover"),
+        ("Cursor.exe", "Cursor"),
+        ("atom.exe", "Atom"),
+        ("sublime_text.exe", "Sublime Text"),
+        ("vim.exe", "Vim"),
+        ("emacs.exe", "Emacs"),
+        ("nvim.exe", "Neovim"),
+        ("WindowsTerminal.exe", "Windows Terminal"),
+        ("powershell.exe", "PowerShell"),
+        ("cmd.exe", "Command Prompt"),
+        ("bash.exe", "Bash"),
+        ("zsh.exe", "Zsh"),
+        ("fish.exe", "Fish"),
+        ("git.exe", "Git"),
+        ("docker.exe", "Docker"),
+        ("kubectl.exe", "Kubernetes"),
+        ("postman.exe", "Postman"),
+        ("insomnia.exe", "Insomnia"),
+        ("mongod.exe", "MongoDB"),
+        ("mysqld.exe", "MySQL"),
+        ("postgres.exe", "PostgreSQL"),
+        ("redis-server.exe", "Redis"),
+        ("elasticsearch.exe", "Elasticsearch"),
+        ("node.exe", "Node.js"),
+        ("npm.exe", "npm"),
+        ("yarn.exe", "Yarn"),
+        ("pnpm.exe", "pnpm"),
+        ("python.exe", "Python"),
+        ("java.exe", "Java"),
+        ("go.exe", "Go"),
+        ("cargo.exe", "Rust"),
     ].iter().cloned().collect();
     
     friendly_names.get(process_name).map(|s| s.to_string())

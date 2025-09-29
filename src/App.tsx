@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 import Dashboard from './Dashboard'
 import TaskPage from './TaskPage'
@@ -6,26 +6,71 @@ import TeamsPage from './TeamsPage'
 import RegisterAppsPage from './RegisterAppsPage'
 import MetricBuilderPage from './MetricBuilderPage'
 import DetectedPage from './DetectedPage'
+import LogsPage from './LogsPage'
+import { invoke } from '@tauri-apps/api/core'
 
 function App() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected'>('dashboard')
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs'>('dashboard')
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle login logic here - for dev mode, just log in
-    console.log('Login attempt:', { email, password })
-    setIsLoggedIn(true)
+    
+    try {
+      console.log('Login attempt:', { email, password })
+      
+      // Initialize database and login
+      const success = await invoke<boolean>('initialize_database_and_login', {
+        email,
+        password
+      })
+      
+      if (success) {
+        console.log('Login successful, database initialized')
+        setIsLoggedIn(true)
+      } else {
+        console.error('Login failed')
+        alert('Login failed. Please check your credentials.')
+      }
+    } catch (error) {
+      console.error('Login error:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      alert(`Login failed: ${errorMessage}`)
+    }
   }
 
-  const handleLogout = () => {
+  // Start activity tracking when user logs in
+  useEffect(() => {
+    if (isLoggedIn) {
+      const startTracking = async () => {
+        try {
+          await invoke('start_activity_tracking')
+          console.log('Activity tracking started on login')
+        } catch (error) {
+          console.error('Failed to start activity tracking on login:', error)
+        }
+      }
+      
+      startTracking()
+    }
+  }, [isLoggedIn])
+
+  const handleLogout = async () => {
+    // Stop activity tracking when user logs out
+    try {
+      await invoke('stop_activity_tracking')
+      console.log('Activity tracking stopped on logout')
+    } catch (error) {
+      console.error('Failed to stop activity tracking on logout:', error)
+    }
+    
     setIsLoggedIn(false)
     setCurrentPage('dashboard')
   }
 
-  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => {
+  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => {
     setCurrentPage(page)
   }
 
@@ -45,6 +90,9 @@ function App() {
     }
     if (currentPage === 'detected') {
       return <DetectedPage onLogout={handleLogout} onPageChange={handlePageChange} />
+    }
+    if (currentPage === 'logs') {
+      return <LogsPage onLogout={handleLogout} onPageChange={handlePageChange} />
     }
     return <Dashboard onLogout={handleLogout} onPageChange={handlePageChange} />
   }

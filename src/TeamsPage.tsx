@@ -17,7 +17,7 @@ interface TeamMember {
 
 interface TeamsPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
 }
 
 function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {

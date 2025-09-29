@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './MetricBuilderPage.css';
 import Sidebar from './Sidebar';
+import { formatTimestamp } from './utils';
 
 interface Message {
   id: string;
@@ -23,7 +24,7 @@ interface Metric {
 
 interface MetricBuilderPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
 }
 
 function MetricBuilderPage({ onLogout, onPageChange }: MetricBuilderPageProps) {
@@ -208,7 +209,7 @@ function MetricBuilderPage({ onLogout, onPageChange }: MetricBuilderPageProps) {
         {message.content}
       </div>
       <div className="message-time">
-        {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        {formatTimestamp(message.timestamp.toISOString(), 'time')}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './DetectedPage.css';
 import Sidebar from './Sidebar';
+import { formatTimestamp } from './utils';
 
 interface DetectedApp {
   name: string;
@@ -14,7 +15,7 @@ interface DetectedApp {
 
 interface DetectedPageProps {
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
 }
 
 function DetectedPage({ onLogout, onPageChange }: DetectedPageProps) {
@@ -55,17 +56,7 @@ function DetectedPage({ onLogout, onPageChange }: DetectedPageProps) {
   });
 
   const formatLastSeen = (timestamp: string) => {
-    const now = new Date();
-    const lastSeen = new Date(timestamp);
-    const diffMs = now.getTime() - lastSeen.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
+    return formatTimestamp(timestamp, 'relative');
   };
 
   const formatDirectory = (directory?: string) => {
