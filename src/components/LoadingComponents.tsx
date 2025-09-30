@@ -12,11 +12,15 @@ export const IOSSpinner: React.FC<{ size?: 'small' | 'medium' | 'large' }> = ({ 
 
 // Skeleton card for team members
 export const TeamMemberSkeleton: React.FC = () => {
+  // Random emoji for skeleton
+  const randomEmojis = ['👨', '👩', '👨‍💻', '👩‍💻', '🧑', '👦', '👧'];
+  const randomEmoji = randomEmojis[Math.floor(Math.random() * randomEmojis.length)];
+  
   return (
     <div className="team-member-skeleton">
       <div className="skeleton-header">
         <div className="skeleton-avatar">
-          <div className="skeleton-emoji"></div>
+          <div className="skeleton-emoji">{randomEmoji}</div>
           <div className="skeleton-status"></div>
         </div>
         <div className="skeleton-info">
@@ -62,6 +66,11 @@ export const TaskSkeleton: React.FC = () => {
       </div>
       
       <div className="skeleton-project"></div>
+      
+      <div className="skeleton-timestamps">
+        <div className="skeleton-timestamp-tag"></div>
+        <div className="skeleton-timestamp-tag"></div>
+      </div>
     </div>
   );
 };

@@ -47,6 +47,26 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{type: 'member' | 'team', id: string, name: string} | null>(null);
 
+  // Array of people emojis for random selection
+  const peopleEmojis = [
+    '👨', '👩', '👨‍💻', '👩‍💻', '👨‍🎨', '👩‍🎨', '👨‍🔬', '👩‍🔬',
+    '👨‍🚀', '👩‍🚀', '👨‍⚕️', '👩‍⚕️', '👨‍🏫', '👩‍🏫', '👨‍💼', '👩‍💼',
+    '👨‍🔧', '👩‍🔧', '👨‍🌾', '👩‍🌾', '👨‍🍳', '👩‍🍳', '👨‍🎓', '👩‍🎓',
+    '🧑', '🧑‍💻', '🧑‍🎨', '🧑‍🔬', '🧑‍🚀', '🧑‍⚕️', '🧑‍🏫', '🧑‍💼',
+    '🧑‍🔧', '🧑‍🌾', '🧑‍🍳', '🧑‍🎓', '👦', '👧', '👴', '👵'
+  ];
+
+  // Function to get a consistent random emoji for a given ID
+  const getRandomEmoji = (id: string) => {
+    // Use the ID to generate a consistent "random" emoji
+    const hash = id.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    const index = Math.abs(hash) % peopleEmojis.length;
+    return peopleEmojis[index];
+  };
+
   // Load teams and team members from backend
   const loadTeamsAndMembers = async () => {
     try {
@@ -74,7 +94,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
           currentTask: 'No current task', // TODO: Get real data
           currentUrl: '',
           team_id: user.team_id,
-          avatar: '👤',
+          avatar: getRandomEmoji(user.id),
           status: 'online' as const
         }));
         
@@ -99,7 +119,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
             currentTask: 'Implement user dashboard',
             currentUrl: 'https://github.com/project/dashboard',
             team_id: '1',
-            avatar: '👨‍💻',
+            avatar: getRandomEmoji('1'),
             status: 'online'
           },
           {
@@ -111,7 +131,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
             currentTask: 'API optimization',
             currentUrl: 'https://github.com/project/api',
             team_id: '2',
-            avatar: '👩‍💻',
+            avatar: getRandomEmoji('2'),
             status: 'busy'
           }
         ];
