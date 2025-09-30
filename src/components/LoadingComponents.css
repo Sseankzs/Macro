@@ -115,12 +115,10 @@
 }
 
 .skeleton-emoji {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200px 100%;
-  animation: shimmer 1.5s infinite;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .skeleton-status {
@@ -223,7 +221,7 @@
 /* Task Skeleton */
 .task-skeleton {
   background: white;
-  border-radius: 12px;
+  border-radius: 6px;
   border: 1px solid #e5e5ea;
   padding: 16px;
   position: relative;
@@ -234,14 +232,14 @@
 .skeleton-task-header {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 12px;
 }
 
 .skeleton-priority {
-  width: 4px;
-  height: 40px;
-  border-radius: 2px;
+  width: 40px;
+  height: 16px;
+  border-radius: 4px;
   background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
   background-size: 200px 100%;
   animation: shimmer 1.5s infinite;
@@ -314,6 +312,22 @@
   background-size: 200px 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.skeleton-timestamps {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.skeleton-timestamp-tag {
+  width: 60px;
+  height: 16px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
 }
 
 /* Teams Skeleton Grid */
@@ -374,34 +388,29 @@
 .tasks-skeleton-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 24px;
-  padding: 24px;
+  gap: 32px;
+  padding: 32px;
   flex: 1;
   overflow: hidden;
 }
 
 .skeleton-status-column {
-  background: #f8f9fa;
-  border-radius: 12px;
-  border: 2px solid transparent;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
 .skeleton-status-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid #e9ecef;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  background: white;
-  border-radius: 12px 12px 0 0;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 0;
 }
 
 .skeleton-status-title {
   width: 80px;
-  height: 18px;
+  height: 16px;
   background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
   background-size: 200px 100%;
   animation: shimmer 1.5s infinite;
@@ -410,20 +419,20 @@
 
 .skeleton-status-count {
   width: 20px;
-  height: 18px;
+  height: 16px;
   background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
   background-size: 200px 100%;
   animation: shimmer 1.5s infinite;
-  border-radius: 12px;
+  border-radius: 2px;
 }
 
 .skeleton-status-content {
-  padding: 16px;
   flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  min-height: 200px;
 }
 
 /* Fade in animation */
@@ -661,8 +670,8 @@
 @media (max-width: 768px) {
   .tasks-skeleton-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 16px;
+    gap: 24px;
+    padding: 24px;
   }
   
   .team-member-skeleton {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './TaskPage.css';
 import Sidebar from './Sidebar';
 import AddTaskModal from './AddTaskModal';
+import TaskDetailModal from './TaskDetailModal';
 import { invoke } from '@tauri-apps/api/core';
 import { TasksSkeletonGrid } from './components/LoadingComponents';
 
@@ -59,6 +60,8 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{type: 'task', id: string, title: string} | null>(null);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
@@ -271,6 +274,14 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     setDraggedTask(null);
   };
 
+  // Handle task card click
+  const handleTaskClick = (task: Task) => {
+    if (!editMode) {
+      setSelectedTask(task);
+      setShowTaskDetailModal(true);
+    }
+  };
+
   // Delete task function
   const handleDeleteTask = (taskId: string, taskTitle: string) => {
     setDeleteTarget({ type: 'task', id: taskId, title: taskTitle });
@@ -297,6 +308,20 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     }
   };
 
+  // Format date for tags
+  const formatDateForTag = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
   // Task Card Component
   const TaskCard = ({ task }: { task: Task }) => {
     const dueDateInfo = formatDueDate(task.due_date);
@@ -307,9 +332,15 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         draggable={!editMode}
         onDragStart={editMode ? undefined : (e) => handleDragStart(e, task.id)}
         onDragEnd={editMode ? undefined : handleDragEnd}
+        onClick={() => handleTaskClick(task)}
       >
         <div className="task-header">
-          <div className="task-priority" style={{ backgroundColor: getPriorityColor(task.priority) }}></div>
+          <span className="task-priority" style={{ 
+            backgroundColor: getPriorityColor(task.priority) + '20',
+            color: getPriorityColor(task.priority)
+          }}>
+            {task.priority}
+          </span>
           <h4 className="task-title">{task.title}</h4>
           {editMode && (
             <button 
@@ -346,6 +377,15 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             📁 {task.project_name}
           </div>
         )}
+
+        <div className="task-timestamps">
+          <span className="timestamp-tag created-tag">
+            Created {formatDateForTag(task.created_at)}
+          </span>
+          <span className="timestamp-tag updated-tag">
+            Updated {formatDateForTag(task.updated_at)}
+          </span>
+        </div>
       </div>
     );
   };
@@ -367,7 +407,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       onDrop={editMode ? undefined : (e) => handleDrop(e, status)}
     >
       <div className="status-header">
-        <h3 className="status-title">{title}</h3>
+        <h3 className="status-title" data-status={status}>{title}</h3>
         <span className="status-count">{count}</span>
       </div>
       <div className="status-content">
@@ -394,14 +434,14 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
               {!editMode ? (
                 <>
                   <button 
-                    className="btn-secondary" 
+                    className="btn-text" 
                     onClick={() => setShowAddTaskModal(true)}
                     disabled={loading}
                   >
-                    Add Task
+                    +
                   </button>
                   <button 
-                    className="btn-edit"
+                    className="btn-text"
                     onClick={() => setEditMode(true)}
                     disabled={loading}
                   >
@@ -410,7 +450,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                 </>
               ) : (
                 <button 
-                  className="btn-done"
+                  className="btn-text"
                   onClick={() => setEditMode(false)}
                 >
                   Done
@@ -462,6 +502,17 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         onTaskAdded={() => {
           setShowAddTaskModal(false);
           // Reload tasks
+          loadAllData();
+        }}
+      />
+      
+      {/* Task Detail Modal */}
+      <TaskDetailModal 
+        isOpen={showTaskDetailModal}
+        onClose={() => setShowTaskDetailModal(false)}
+        task={selectedTask}
+        onTaskUpdated={() => {
+          // Reload tasks to reflect changes
           loadAllData();
         }}
       />
