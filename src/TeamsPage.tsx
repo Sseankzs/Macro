@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './TeamsPage.css';
 import Sidebar from './Sidebar';
-import { DataService } from './services/dataService';
+import { invoke } from '@tauri-apps/api/core';
 
 interface TeamMember {
   id: string;
@@ -33,12 +33,8 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
         setLoading(true);
         setError(null);
         
-        // Initialize data service if not already done
-        await DataService.initialize();
-        await DataService.initializeWithSampleData();
-        
-        // Fetch team members from backend
-        const backendMembers = await DataService.getTeamMembers();
+        // Fetch team members from Tauri backend
+        const backendMembers = await invoke('get_all_teams') as TeamMember[];
         
         // Transform backend members to frontend format
         const frontendMembers: TeamMember[] = backendMembers.map(member => ({
@@ -180,7 +176,10 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       
       // Update the backend
       try {
-        await DataService.updateTeamMemberCategory(draggedMember, newCategory);
+        await invoke('update_user', {
+          userId: draggedMember.id,
+          teamId: newCategory
+        });
       } catch (error) {
         console.error('Failed to update team member category:', error);
         // Revert the UI change if backend update fails

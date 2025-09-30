@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './TaskPage.css';
 import Sidebar from './Sidebar';
-import { DataService } from './services/dataService';
+import { invoke } from '@tauri-apps/api/core';
 
 interface Task {
   id: string;
@@ -49,12 +49,8 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         setLoading(true);
         setError(null);
         
-        // Initialize data service and load sample data if needed
-        await DataService.initialize();
-        await DataService.initializeWithSampleData();
-        
-        // Fetch tasks from backend
-        const backendTasks = await DataService.getTasks();
+        // Fetch tasks from Tauri backend
+        const backendTasks = await invoke('get_my_tasks') as Task[];
         
         // Transform backend tasks to frontend format
         const frontendTasks: Task[] = backendTasks.map(task => ({
@@ -168,7 +164,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       
       // Update the backend
       try {
-        await DataService.updateTaskStatus(taskId, newStatus);
+        await invoke('update_task', {
+          taskId: taskId,
+          status: newStatus
+        });
       } catch (error) {
         console.error('Failed to update task status:', error);
         // Revert the UI change if backend update fails
