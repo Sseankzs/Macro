@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './TeamsPage.css';
 import Sidebar from './Sidebar';
+import { DataService } from './services/dataService';
 
 interface TeamMember {
   id: string;
@@ -21,80 +22,125 @@ interface TeamsPageProps {
 }
 
 function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
-    {
-      id: '1',
-      name: 'Sarah Johnson',
-      position: 'Frontend Developer',
-      inProgressTasks: 3,
-      hoursTracked: 6.5,
-      currentTask: 'Implement user dashboard',
-      currentUrl: 'github.com/project',
-      category: 'frontend',
-      avatar: '👩‍💻',
-      status: 'online'
-    },
-    {
-      id: '2',
-      name: 'Mike Chen',
-      position: 'Backend Developer',
-      inProgressTasks: 2,
-      hoursTracked: 7.2,
-      currentTask: 'API optimization',
-      currentUrl: 'api.docs',
-      category: 'backend',
-      avatar: '👨‍💻',
-      status: 'online'
-    },
-    {
-      id: '3',
-      name: 'Emily Rodriguez',
-      position: 'UI/UX Designer',
-      inProgressTasks: 1,
-      hoursTracked: 5.8,
-      currentTask: 'Mobile wireframes',
-      currentUrl: 'figma.com/design',
-      category: 'design',
-      avatar: '👩‍🎨',
-      status: 'online'
-    },
-    {
-      id: '4',
-      name: 'David Kim',
-      position: 'Product Manager',
-      inProgressTasks: 4,
-      hoursTracked: 8.1,
-      currentTask: 'Sprint planning',
-      currentUrl: 'slack.com/channels',
-      category: 'management',
-      avatar: '👨‍💼',
-      status: 'busy'
-    },
-    {
-      id: '5',
-      name: 'Lisa Wang',
-      position: 'QA Engineer',
-      inProgressTasks: 2,
-      hoursTracked: 4.3,
-      currentTask: 'Bug testing',
-      currentUrl: 'test-app.com',
-      category: 'backend',
-      avatar: '👩‍🔬',
-      status: 'away'
-    },
-    {
-      id: '6',
-      name: 'Alex Thompson',
-      position: 'DevOps Engineer',
-      inProgressTasks: 0,
-      hoursTracked: 0,
-      currentTask: '',
-      currentUrl: '',
-      category: 'backend',
-      avatar: '👨‍🔧',
-      status: 'offline'
-    }
-  ]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load team members from backend
+  useEffect(() => {
+    const loadTeamMembers = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Initialize data service if not already done
+        await DataService.initialize();
+        await DataService.initializeWithSampleData();
+        
+        // Fetch team members from backend
+        const backendMembers = await DataService.getTeamMembers();
+        
+        // Transform backend members to frontend format
+        const frontendMembers: TeamMember[] = backendMembers.map(member => ({
+          id: member.id,
+          name: member.name,
+          position: member.position,
+          inProgressTasks: member.inProgressTasks,
+          hoursTracked: member.hoursTracked,
+          currentTask: member.currentTask,
+          currentUrl: member.currentUrl,
+          category: member.category,
+          avatar: member.avatar,
+          status: member.status
+        }));
+        
+        setTeamMembers(frontendMembers);
+      } catch (err) {
+        console.error('Failed to load team members:', err);
+        setError('Failed to load team members. Please try again.');
+        
+        // Fallback to sample data if backend fails
+        setTeamMembers([
+          {
+            id: '1',
+            name: 'Sarah Johnson',
+            position: 'Frontend Developer',
+            inProgressTasks: 3,
+            hoursTracked: 6.5,
+            currentTask: 'Implement user dashboard',
+            currentUrl: 'github.com/project',
+            category: 'frontend',
+            avatar: '👩‍💻',
+            status: 'online'
+          },
+          {
+            id: '2',
+            name: 'Mike Chen',
+            position: 'Backend Developer',
+            inProgressTasks: 2,
+            hoursTracked: 7.2,
+            currentTask: 'API optimization',
+            currentUrl: 'api.docs',
+            category: 'backend',
+            avatar: '👨‍💻',
+            status: 'online'
+          },
+          {
+            id: '3',
+            name: 'Emily Rodriguez',
+            position: 'UI/UX Designer',
+            inProgressTasks: 1,
+            hoursTracked: 5.8,
+            currentTask: 'Mobile wireframes',
+            currentUrl: 'figma.com/design',
+            category: 'design',
+            avatar: '👩‍🎨',
+            status: 'online'
+          },
+          {
+            id: '4',
+            name: 'David Kim',
+            position: 'Product Manager',
+            inProgressTasks: 4,
+            hoursTracked: 8.1,
+            currentTask: 'Sprint planning',
+            currentUrl: 'slack.com/channels',
+            category: 'management',
+            avatar: '👨‍💼',
+            status: 'busy'
+          },
+          {
+            id: '5',
+            name: 'Lisa Wang',
+            position: 'QA Engineer',
+            inProgressTasks: 2,
+            hoursTracked: 4.3,
+            currentTask: 'Bug testing',
+            currentUrl: 'test-app.com',
+            category: 'backend',
+            avatar: '👩‍🔬',
+            status: 'away'
+          },
+          {
+            id: '6',
+            name: 'Alex Thompson',
+            position: 'DevOps Engineer',
+            inProgressTasks: 0,
+            hoursTracked: 0,
+            currentTask: '',
+            currentUrl: '',
+            category: 'backend',
+            avatar: '👨‍🔧',
+            status: 'offline'
+          }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadTeamMembers();
+  }, []);
 
   const [draggedMember, setDraggedMember] = useState<string | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
@@ -122,14 +168,30 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
     setDragOverCategory(null);
   };
 
-  const handleDrop = (e: React.DragEvent, newCategory: TeamMember['category']) => {
+  const handleDrop = async (e: React.DragEvent, newCategory: TeamMember['category']) => {
     e.preventDefault();
     if (draggedMember) {
+      // Optimistically update the UI
       setTeamMembers(prevMembers =>
         prevMembers.map(member =>
           member.id === draggedMember ? { ...member, category: newCategory } : member
         )
       );
+      
+      // Update the backend
+      try {
+        await DataService.updateTeamMemberCategory(draggedMember, newCategory);
+      } catch (error) {
+        console.error('Failed to update team member category:', error);
+        // Revert the UI change if backend update fails
+        setTeamMembers(prevMembers =>
+          prevMembers.map(member =>
+            member.id === draggedMember ? { ...member, category: member.category } : member
+          )
+        );
+        setError('Failed to update team member category. Please try again.');
+      }
+      
       setDraggedMember(null);
       setDragOverCategory(null);
     }
@@ -151,10 +213,10 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
 
   const getCategoryColor = (category: TeamMember['category']) => {
     switch (category) {
-      case 'active': return '#007aff';
-      case 'break': return '#ff9500';
-      case 'meeting': return '#af52de';
-      case 'offline': return '#8e8e93';
+      case 'frontend': return '#007aff';
+      case 'backend': return '#ff9500';
+      case 'design': return '#af52de';
+      case 'management': return '#8e8e93';
       default: return '#8e8e93';
     }
   };
@@ -248,6 +310,29 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
               <button className="btn-primary">Add Member</button>
             </div>
           </div>
+          
+          {error && (
+            <div className="error-message" style={{ 
+              background: '#ffebee', 
+              color: '#c62828', 
+              padding: '12px', 
+              borderRadius: '8px', 
+              margin: '16px 0',
+              border: '1px solid #ffcdd2'
+            }}>
+              {error}
+            </div>
+          )}
+          
+          {loading && (
+            <div className="loading-message" style={{ 
+              textAlign: 'center', 
+              padding: '40px', 
+              color: '#666' 
+            }}>
+              Loading team members...
+            </div>
+          )}
           
           <div className="content-area">
             <div className="teams-grid">

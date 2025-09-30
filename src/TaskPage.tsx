@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './TaskPage.css';
 import Sidebar from './Sidebar';
+import { DataService } from './services/dataService';
 
 interface Task {
   id: string;
@@ -21,6 +22,9 @@ interface TaskPageProps {
 
 function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Add Command+T keyboard shortcut for task search
@@ -38,56 +42,93 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     };
   }, []);
 
-  const [tasks, setTasks] = useState<Task[]>([
-    {
-      id: '1',
-      title: 'Implement user authentication',
-      description: 'Add login and registration functionality with JWT tokens',
-      dueDate: '2024-01-15',
-      tags: { type: 'Feature', urgency: 'High' },
-      status: 'in-progress'
-    },
-    {
-      id: '2',
-      title: 'Fix responsive design issues',
-      description: 'Mobile layout breaks on screens smaller than 320px',
-      dueDate: '2024-01-12',
-      tags: { type: 'Bug', urgency: 'Medium' },
-      status: 'todo'
-    },
-    {
-      id: '3',
-      title: 'Add dark mode toggle',
-      description: 'Implement theme switching with system preference detection',
-      dueDate: '2024-01-20',
-      tags: { type: 'Enhancement', urgency: 'Low' },
-      status: 'backlog'
-    },
-    {
-      id: '4',
-      title: 'Optimize database queries',
-      description: 'Reduce query time for user dashboard data',
-      dueDate: '2024-01-10',
-      tags: { type: 'Performance', urgency: 'High' },
-      status: 'done'
-    },
-    {
-      id: '5',
-      title: 'Write unit tests',
-      description: 'Add test coverage for authentication module',
-      dueDate: '2024-01-18',
-      tags: { type: 'Testing', urgency: 'Medium' },
-      status: 'todo'
-    },
-    {
-      id: '6',
-      title: 'Update documentation',
-      description: 'Document new API endpoints and usage examples',
-      dueDate: '2024-01-25',
-      tags: { type: 'Documentation', urgency: 'Low' },
-      status: 'backlog'
-    }
-  ]);
+  // Load tasks from backend
+  useEffect(() => {
+    const loadTasks = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Initialize data service and load sample data if needed
+        await DataService.initialize();
+        await DataService.initializeWithSampleData();
+        
+        // Fetch tasks from backend
+        const backendTasks = await DataService.getTasks();
+        
+        // Transform backend tasks to frontend format
+        const frontendTasks: Task[] = backendTasks.map(task => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          dueDate: task.dueDate,
+          tags: task.tags,
+          status: task.status
+        }));
+        
+        setTasks(frontendTasks);
+      } catch (err) {
+        console.error('Failed to load tasks:', err);
+        setError('Failed to load tasks. Please try again.');
+        
+        // Fallback to sample data if backend fails
+        setTasks([
+          {
+            id: '1',
+            title: 'Implement user authentication',
+            description: 'Add login and registration functionality with JWT tokens',
+            dueDate: '2024-01-15',
+            tags: { type: 'Feature', urgency: 'High' },
+            status: 'in-progress'
+          },
+          {
+            id: '2',
+            title: 'Fix responsive design issues',
+            description: 'Mobile layout breaks on screens smaller than 320px',
+            dueDate: '2024-01-12',
+            tags: { type: 'Bug', urgency: 'Medium' },
+            status: 'todo'
+          },
+          {
+            id: '3',
+            title: 'Add dark mode toggle',
+            description: 'Implement theme switching with system preference detection',
+            dueDate: '2024-01-20',
+            tags: { type: 'Enhancement', urgency: 'Low' },
+            status: 'backlog'
+          },
+          {
+            id: '4',
+            title: 'Optimize database queries',
+            description: 'Reduce query time for user dashboard data',
+            dueDate: '2024-01-10',
+            tags: { type: 'Performance', urgency: 'High' },
+            status: 'done'
+          },
+          {
+            id: '5',
+            title: 'Write unit tests',
+            description: 'Add test coverage for authentication module',
+            dueDate: '2024-01-18',
+            tags: { type: 'Testing', urgency: 'Medium' },
+            status: 'todo'
+          },
+          {
+            id: '6',
+            title: 'Update documentation',
+            description: 'Document new API endpoints and usage examples',
+            dueDate: '2024-01-25',
+            tags: { type: 'Documentation', urgency: 'Low' },
+            status: 'backlog'
+          }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadTasks();
+  }, []);
 
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -113,16 +154,32 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     setDragOverColumn(null);
   };
 
-  const handleDrop = (e: React.DragEvent, newStatus: Task['status']) => {
+  const handleDrop = async (e: React.DragEvent, newStatus: Task['status']) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain') || draggedTask;
     
     if (taskId) {
+      // Optimistically update the UI
       setTasks(prevTasks =>
         prevTasks.map(task =>
           task.id === taskId ? { ...task, status: newStatus } : task
         )
       );
+      
+      // Update the backend
+      try {
+        await DataService.updateTaskStatus(taskId, newStatus);
+      } catch (error) {
+        console.error('Failed to update task status:', error);
+        // Revert the UI change if backend update fails
+        setTasks(prevTasks =>
+          prevTasks.map(task =>
+            task.id === taskId ? { ...task, status: task.status } : task
+          )
+        );
+        setError('Failed to update task status. Please try again.');
+      }
+      
       setDraggedTask(null);
       setDragOverColumn(null);
     }
@@ -296,6 +353,29 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
               <span className="task-search-shortcut">⌘T</span>
             </div>
           </div>
+          
+          {error && (
+            <div className="error-message" style={{ 
+              background: '#ffebee', 
+              color: '#c62828', 
+              padding: '12px', 
+              borderRadius: '8px', 
+              margin: '16px 0',
+              border: '1px solid #ffcdd2'
+            }}>
+              {error}
+            </div>
+          )}
+          
+          {loading && (
+            <div className="loading-message" style={{ 
+              textAlign: 'center', 
+              padding: '40px', 
+              color: '#666' 
+            }}>
+              Loading tasks...
+            </div>
+          )}
           
           <div className="kanban-board">
             <KanbanColumn 

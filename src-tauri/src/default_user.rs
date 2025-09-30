@@ -21,7 +21,3 @@ pub fn get_default_user_id() -> String {
     "fdbc0903-26e4-4271-8a57-34217bd2cd45".to_string()
 }
 
-// Helper function to check if a user ID matches the default user
-pub fn is_default_user(user_id: &str) -> bool {
-    user_id == get_default_user_id()
-}
