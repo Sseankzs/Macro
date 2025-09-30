@@ -365,10 +365,37 @@ impl ActivityTracker {
     }
 
     async fn end_time_entry(db: &Database, entry_id: String) -> Result<(), String> {
-        let end_time = chrono::Utc::now().to_rfc3339();
+        // First, get the current time entry to access the start_time
+        let get_url = format!("{}/rest/v1/time_entries?id=eq.{}", db.base_url, entry_id);
+        let get_response = db.client
+            .get(&get_url)
+            .header("apikey", &db.api_key)
+            .header("Authorization", format!("Bearer {}", db.api_key))
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch time entry: {}", e))?;
+
+        if !get_response.status().is_success() {
+            let status = get_response.status();
+            let error_text = get_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(format!("HTTP error {}: {}", status, error_text));
+        }
+
+        let time_entries: Vec<TimeEntry> = get_response.json().await
+            .map_err(|e| format!("Failed to parse time entry: {}", e))?;
+        
+        let time_entry = time_entries.first()
+            .ok_or("Time entry not found")?;
+
+        let end_time = chrono::Utc::now();
+        let start_time = time_entry.start_time;
+        
+        // Calculate duration in seconds
+        let duration_seconds = (end_time - start_time).num_seconds();
         
         let update_data = json!({
-            "end_time": end_time,
+            "end_time": end_time.to_rfc3339(),
+            "duration_seconds": duration_seconds,
             "is_active": false,
             "updated_at": chrono::Utc::now().to_rfc3339()
         });
@@ -391,6 +418,7 @@ impl ActivityTracker {
             return Err(format!("HTTP error {}: {}", status, error_text));
         }
 
+        println!("Ended time entry {} with duration: {} seconds", entry_id, duration_seconds);
         Ok(())
     }
 

@@ -157,14 +157,21 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
   };
 
   return (
-    <div className="logs-page">
-      <Sidebar onLogout={onLogout} onPageChange={onPageChange} />
+    <div className="dashboard-container">
+      <Sidebar currentPage="logs" onLogout={onLogout} onPageChange={onPageChange} />
       
-      <div className="logs-content">
-        <div className="logs-header">
-          <h1>Time Logs</h1>
-          <p>View and analyze your time tracking data</p>
-        </div>
+      <div className="main-content">
+        <div className="logs-container">
+          <div className="logs-header">
+            <h1>Time Logs</h1>
+            <div className="header-actions">
+              <button className="btn-secondary" onClick={() => fetchTimeEntries()}>
+                Refresh
+              </button>
+            </div>
+          </div>
+          
+          <div className="logs-content">
 
         {/* Controls */}
         <div className="logs-controls">
@@ -291,6 +298,8 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
             </button>
           </div>
         )}
+          </div>
+        </div>
       </div>
     </div>
   );

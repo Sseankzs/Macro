@@ -13,8 +13,12 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@nivo/bar": "^0.99.0",
+    "@nivo/pie": "^0.99.0",
+    "@tauri-apps/api": "^2.8.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "recharts": "^3.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

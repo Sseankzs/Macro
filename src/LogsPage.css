@@ -1,45 +1,103 @@
-.logs-page {
+/* Logs Page Styles - iOS Design */
+.dashboard-container {
   display: flex;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  height: 100vh;
+  width: 100vw;
+  background: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
-.logs-content {
+/* Main Content */
+.main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 1rem 2rem;
-  overflow-y: auto;
-  max-width: 1200px;
-  margin: 0 auto;
-  width: 100%;
+  overflow: hidden;
+  padding: 1rem 1rem 1rem 1rem;
+}
+
+/* Logs Container - White container with rounded edges */
+.logs-container {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #dee2e6;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .logs-header {
-  margin-bottom: 2rem;
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .logs-header h1 {
-  color: white;
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin: 0 0 0.5rem 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.logs-header p {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 1.1rem;
   margin: 0;
+  font-size: 1.875rem;
+  font-weight: 400;
+  color: #1a202c;
+  display: flex;
+  align-items: flex-end;
+  height: 2.5rem;
 }
 
+.header-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.btn-primary {
+  background: #000000;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: #333333;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #f8f9fa;
+  color: #495057;
+  border: 2px solid #e2e8f0;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: #e9ecef;
+  transform: translateY(-1px);
+}
+
+/* Content Area */
+.logs-content {
+  flex: 1;
+  padding: 1rem 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Controls */
 .logs-controls {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(10px);
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -62,15 +120,15 @@
 .filter-group label {
   font-weight: 600;
   color: #374151;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .filter-select {
   padding: 0.5rem 0.75rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid #e2e8f0;
   border-radius: 8px;
   background: white;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: #374151;
   transition: all 0.2s ease;
   min-width: 120px;
@@ -78,8 +136,7 @@
 
 .filter-select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #6c757d;
 }
 
 .search-controls {
@@ -89,10 +146,10 @@
 
 .search-input {
   padding: 0.5rem 0.75rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid #e2e8f0;
   border-radius: 8px;
   background: white;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: #374151;
   transition: all 0.2s ease;
   min-width: 200px;
@@ -100,54 +157,54 @@
 
 .search-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #6c757d;
 }
 
 .results-summary {
-  background: rgba(255, 255, 255, 0.9);
+  background: #f8f9fa;
   border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
   color: #6b7280;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
 }
 
 .logs-table-container {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
+  background: white;
+  border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(10px);
+  border: 2px solid #e2e8f0;
+  margin-bottom: 0;
 }
 
 .logs-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .logs-table thead {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: #f8f9fa;
+  color: #374151;
 }
 
 .logs-table th {
   padding: 1rem;
   text-align: left;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   letter-spacing: 0.5px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .logs-table tbody tr {
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e2e8f0;
   transition: all 0.2s ease;
 }
 
 .logs-table tbody tr:hover {
-  background: rgba(102, 126, 234, 0.05);
+  background: #f8f9fa;
 }
 
 .logs-table tbody tr.active-entry {
@@ -173,11 +230,11 @@
 .app-name {
   font-weight: 600;
   color: #1f2937;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
 }
 
 .app-category {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: #6b7280;
   background: #f3f4f6;
   padding: 0.25rem 0.5rem;
@@ -187,7 +244,7 @@
 
 .time-cell {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #374151;
   min-width: 150px;
 }
@@ -206,7 +263,7 @@
   display: inline-block;
   padding: 0.25rem 0.75rem;
   border-radius: 20px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -229,15 +286,15 @@
   justify-content: center;
   align-items: center;
   gap: 1rem;
-  margin-top: 1.5rem;
-  background: rgba(255, 255, 255, 0.9);
+  margin-top: 0.5rem;
+  background: #f8f9fa;
   border-radius: 8px;
   padding: 1rem;
 }
 
 .pagination-btn {
   padding: 0.5rem 1rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid #e2e8f0;
   border-radius: 8px;
   background: white;
   color: #374151;
@@ -247,8 +304,8 @@
 }
 
 .pagination-btn:hover:not(:disabled) {
-  border-color: #667eea;
-  color: #667eea;
+  border-color: #cbd5e0;
+  color: #6c757d;
 }
 
 .pagination-btn:disabled {
@@ -259,14 +316,14 @@
 .pagination-info {
   color: #6b7280;
   font-weight: 500;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .loading, .error {
   text-align: center;
   padding: 3rem;
   color: #6b7280;
-  font-size: 1.1rem;
+  font-size: 1rem;
 }
 
 .error {
@@ -278,9 +335,12 @@
 
 /* Responsive Design */
 @media (max-width: 768px) {
+  .main-content {
+    padding: 0.5rem;
+  }
+  
   .logs-content {
     padding: 1rem;
-    max-width: 100%;
   }
   
   .logs-controls {

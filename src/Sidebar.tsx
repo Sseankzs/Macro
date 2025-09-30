@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import './Dashboard.css';
 
 interface SidebarProps {
@@ -8,26 +8,13 @@ interface SidebarProps {
 }
 
 function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     // Add class to body when sidebar is mounted
     document.body.classList.add('dashboard-active');
     
-    // Add Command+F keyboard shortcut
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    
-    // Cleanup: remove class and event listener when component unmounts
+    // Cleanup: remove class when component unmounts
     return () => {
       document.body.classList.remove('dashboard-active');
-      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
@@ -107,19 +94,6 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
         <button className="logout-btn-top" onClick={onLogout}>Logout</button>
       </div>
       <nav className="sidebar-nav">
-        <div className="search-bar">
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search"
-            className="search-input"
-          />
-          <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="M21 21l-4.35-4.35"/>
-          </svg>
-          <span className="search-shortcut">⌘F</span>
-        </div>
         <div className="nav-section">
           <h3 className="nav-section-title">Essentials</h3>
           <ul>

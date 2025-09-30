@@ -634,9 +634,41 @@ pub async fn update_time_entry(
         "updated_at": now().to_rfc3339()
     });
 
-    if let Some(end_time) = end_time {
-        update_data["end_time"] = json!(end_time);
+    // If end_time is provided but duration_seconds is not, calculate it automatically
+    if let Some(end_time_str) = &end_time {
+        update_data["end_time"] = json!(end_time_str);
+        
+        if duration_seconds.is_none() {
+            // Get the current time entry to access the start_time
+            let get_url = format!("{}/rest/v1/time_entries?id=eq.{}", db.base_url, entry_id);
+            let get_response = db.client
+                .get(&get_url)
+                .header("apikey", &db.api_key)
+                .header("Authorization", format!("Bearer {}", db.api_key))
+                .send()
+                .await
+                .map_err(|e| format!("Failed to fetch time entry: {}", e))?;
+
+            if get_response.status().is_success() {
+                let time_entries: Vec<TimeEntry> = get_response.json().await
+                    .map_err(|e| format!("Failed to parse time entry: {}", e))?;
+                
+                if let Some(time_entry) = time_entries.first() {
+                    // Parse the provided end_time
+                    if let Ok(end_time_parsed) = chrono::DateTime::parse_from_rfc3339(end_time_str) {
+                        let end_time_utc = end_time_parsed.with_timezone(&chrono::Utc);
+                        let start_time = time_entry.start_time;
+                        
+                        // Calculate duration in seconds
+                        let calculated_duration = (end_time_utc - start_time).num_seconds();
+                        update_data["duration_seconds"] = json!(calculated_duration);
+                        println!("Auto-calculated duration: {} seconds for time entry {}", calculated_duration, entry_id);
+                    }
+                }
+            }
+        }
     }
+    
     if let Some(duration_seconds) = duration_seconds {
         update_data["duration_seconds"] = json!(duration_seconds);
     }

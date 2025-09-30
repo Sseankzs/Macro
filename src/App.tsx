@@ -7,6 +7,7 @@ import RegisterAppsPage from './RegisterAppsPage'
 import MetricBuilderPage from './MetricBuilderPage'
 import DetectedPage from './DetectedPage'
 import LogsPage from './LogsPage'
+import { DashboardCacheProvider } from './contexts/DashboardCacheContext'
 import { invoke } from '@tauri-apps/api/core'
 
 function App() {
@@ -76,25 +77,31 @@ function App() {
 
   // Show dashboard if logged in
   if (isLoggedIn) {
-    if (currentPage === 'tasks') {
-      return <TaskPage onLogout={handleLogout} onPageChange={handlePageChange} />
-    }
-    if (currentPage === 'teams') {
-      return <TeamsPage onLogout={handleLogout} onPageChange={handlePageChange} />
-    }
-    if (currentPage === 'register-apps') {
-      return <RegisterAppsPage onLogout={handleLogout} onPageChange={handlePageChange} />
-    }
-    if (currentPage === 'metric-builder') {
-      return <MetricBuilderPage onLogout={handleLogout} onPageChange={handlePageChange} />
-    }
-    if (currentPage === 'detected') {
-      return <DetectedPage onLogout={handleLogout} onPageChange={handlePageChange} />
-    }
-    if (currentPage === 'logs') {
-      return <LogsPage onLogout={handleLogout} onPageChange={handlePageChange} />
-    }
-    return <Dashboard onLogout={handleLogout} onPageChange={handlePageChange} />
+    return (
+      <DashboardCacheProvider>
+        {currentPage === 'tasks' && (
+          <TaskPage onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+        {currentPage === 'teams' && (
+          <TeamsPage onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+        {currentPage === 'register-apps' && (
+          <RegisterAppsPage onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+        {currentPage === 'metric-builder' && (
+          <MetricBuilderPage onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+        {currentPage === 'detected' && (
+          <DetectedPage onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+        {currentPage === 'logs' && (
+          <LogsPage onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+        {currentPage === 'dashboard' && (
+          <Dashboard onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+      </DashboardCacheProvider>
+    )
   }
 
   return (
