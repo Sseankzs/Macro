@@ -51,7 +51,7 @@ interface TeamMember {
 
 interface TaskPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
 }
 
 function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
@@ -267,7 +267,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       // Update in backend
       if (isTauri()) {
         await invoke('update_task', {
-          task_id: draggedTask,
+          taskId: draggedTask,
           status: newStatus
         });
         console.log('Task status updated successfully');
