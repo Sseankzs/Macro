@@ -22,7 +22,7 @@ pub async fn create_user(
     db: State<'_, Database>,
     name: String,
     email: String,
-    team_id: Option<String>,
+    teamId: String,
     role: String,
 ) -> Result<User, String> {
     match role.as_str() {
@@ -30,26 +30,61 @@ pub async fn create_user(
         _ => return Err("Invalid role. Must be 'owner', 'manager', or 'member'".to_string()),
     }
 
+    // Debug logging
+    println!("Creating user with teamId: {:?}", teamId);
+
     let user_data = json!({
         "id": generate_id(),
         "name": name,
         "email": email,
-        "team_id": team_id,
+        "team_id": teamId,
         "current_project_id": null,
         "role": role,
         "created_at": now().to_rfc3339(),
         "updated_at": now().to_rfc3339()
     });
 
+    println!("User data being sent to database: {}", user_data);
+
     let response = db
         .execute_query("users", "POST", Some(user_data))
         .await
         .map_err(|e| format!("Failed to create user: {}", e))?;
 
-    let created_user: User = serde_json::from_value(response)
+    // The response should be an array with the created record
+    let created_users: Vec<User> = serde_json::from_value(response)
         .map_err(|e| format!("Failed to parse created user: {}", e))?;
+    
+    if let Some(created_user) = created_users.into_iter().next() {
+        Ok(created_user)
+    } else {
+        Err("No user was created".to_string())
+    }
+}
 
-    Ok(created_user)
+#[tauri::command]
+pub async fn delete_user(db: State<'_, Database>, userId: String) -> Result<(), String> {
+    println!("Delete user command called with userId: {}", userId);
+    
+    let url = format!("{}/rest/v1/users?id=eq.{}", db.base_url, userId);
+    println!("Delete URL: {}", url);
+    
+    let response = db.client
+        .delete(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to delete user: {}", e))?;
+
+    println!("Delete response status: {}", response.status());
+
+    if !response.status().is_success() {
+        return Err(format!("Failed to delete user: {}", response.status()));
+    }
+
+    println!("User deleted successfully");
+    Ok(())
 }
 
 #[tauri::command]
@@ -74,9 +109,24 @@ pub async fn get_user(db: State<'_, Database>, user_id: String) -> Result<Option
 #[tauri::command]
 pub async fn get_users_by_team(
     db: State<'_, Database>,
-    team_id: String,
+    teamId: String,
 ) -> Result<Vec<User>, String> {
-    let url = format!("{}/rest/v1/users?team_id=eq.{}", db.base_url, team_id);
+    let url = format!("{}/rest/v1/users?teamId=eq.{}", db.base_url, teamId);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch users: {}", e))?;
+
+    let users: Vec<User> = response.json().await.map_err(|e| format!("Failed to parse users: {}", e))?;
+    Ok(users)
+}
+
+#[tauri::command]
+pub async fn get_all_users(db: State<'_, Database>) -> Result<Vec<User>, String> {
+    let url = format!("{}/rest/v1/users", db.base_url);
     let response = db.client
         .get(&url)
         .header("apikey", &db.api_key)
@@ -95,7 +145,7 @@ pub async fn update_user(
     user_id: String,
     name: Option<String>,
     email: Option<String>,
-    team_id: Option<String>,
+    teamId: Option<String>,
     current_project_id: Option<String>,
     role: Option<String>,
 ) -> Result<User, String> {
@@ -109,8 +159,8 @@ pub async fn update_user(
     if let Some(email) = email {
         update_data["email"] = json!(email);
     }
-    if let Some(team_id) = team_id {
-        update_data["team_id"] = json!(team_id);
+    if let Some(teamId) = teamId {
+        update_data["teamId"] = json!(teamId);
     }
     if let Some(current_project_id) = current_project_id {
         update_data["current_project_id"] = json!(current_project_id);
@@ -160,15 +210,20 @@ pub async fn create_team(
         .await
         .map_err(|e| format!("Failed to create team: {}", e))?;
 
-    let created_team: Team = serde_json::from_value(response)
+    // The response should be an array with the created record
+    let created_teams: Vec<Team> = serde_json::from_value(response)
         .map_err(|e| format!("Failed to parse created team: {}", e))?;
-
-    Ok(created_team)
+    
+    if let Some(created_team) = created_teams.into_iter().next() {
+        Ok(created_team)
+    } else {
+        Err("No team was created".to_string())
+    }
 }
 
 #[tauri::command]
-pub async fn get_team(db: State<'_, Database>, team_id: String) -> Result<Option<Team>, String> {
-    let url = format!("{}/rest/v1/teams?id=eq.{}", db.base_url, team_id);
+pub async fn get_team(db: State<'_, Database>, teamId: String) -> Result<Option<Team>, String> {
+    let url = format!("{}/rest/v1/teams?id=eq.{}", db.base_url, teamId);
     let response = db.client
         .get(&url)
         .header("apikey", &db.api_key)
@@ -200,20 +255,45 @@ pub async fn get_all_teams(db: State<'_, Database>) -> Result<Vec<Team>, String>
     Ok(teams)
 }
 
+#[tauri::command]
+pub async fn delete_team(db: State<'_, Database>, teamId: String) -> Result<(), String> {
+    println!("Delete team command called with teamId: {}", teamId);
+    
+    let url = format!("{}/rest/v1/teams?id=eq.{}", db.base_url, teamId);
+    println!("Delete team URL: {}", url);
+    
+    let response = db.client
+        .delete(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to delete team: {}", e))?;
+
+    println!("Delete team response status: {}", response.status());
+
+    if !response.status().is_success() {
+        return Err(format!("Failed to delete team: {}", response.status()));
+    }
+
+    println!("Team deleted successfully");
+    Ok(())
+}
+
 // ===== PROJECT COMMANDS =====
 
 #[tauri::command]
 pub async fn create_project(
     db: State<'_, Database>,
     name: String,
-    team_id: String,
+    teamId: String,
     manager_id: String,
     description: Option<String>,
 ) -> Result<Project, String> {
     let project_data = json!({
         "id": generate_id(),
         "name": name,
-        "team_id": team_id,
+        "team_id": teamId,
         "manager_id": manager_id,
         "description": description,
         "created_at": now().to_rfc3339(),
@@ -225,18 +305,23 @@ pub async fn create_project(
         .await
         .map_err(|e| format!("Failed to create project: {}", e))?;
 
-    let created_project: Project = serde_json::from_value(response)
+    // The response should be an array with the created record
+    let created_projects: Vec<Project> = serde_json::from_value(response)
         .map_err(|e| format!("Failed to parse created project: {}", e))?;
-
-    Ok(created_project)
+    
+    if let Some(created_project) = created_projects.into_iter().next() {
+        Ok(created_project)
+    } else {
+        Err("No project was created".to_string())
+    }
 }
 
 #[tauri::command]
 pub async fn get_projects_by_team(
     db: State<'_, Database>,
-    team_id: String,
+    teamId: String,
 ) -> Result<Vec<Project>, String> {
-    let url = format!("{}/rest/v1/projects?team_id=eq.{}", db.base_url, team_id);
+    let url = format!("{}/rest/v1/projects?team_id=eq.{}", db.base_url, teamId);
     let response = db.client
         .get(&url)
         .header("apikey", &db.api_key)
@@ -268,13 +353,32 @@ pub async fn get_project(db: State<'_, Database>, project_id: String) -> Result<
     Ok(projects.into_iter().next())
 }
 
+#[tauri::command]
+pub async fn get_all_projects(db: State<'_, Database>) -> Result<Vec<Project>, String> {
+    let url = format!("{}/rest/v1/projects", db.base_url);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get projects: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Failed to get projects: {}", response.status()));
+    }
+
+    let projects: Vec<Project> = response.json().await.map_err(|e| format!("Failed to parse projects: {}", e))?;
+    Ok(projects)
+}
+
 // ===== TASK COMMANDS =====
 
 #[tauri::command]
 pub async fn create_task(
     db: State<'_, Database>,
     title: String,
-    project_id: String,
+    project_id: Option<String>,
     assignee_id: Option<String>,
     description: Option<String>,
     status: Option<String>,
@@ -305,16 +409,23 @@ pub async fn create_task(
         "created_at": now().to_rfc3339(),
         "updated_at": now().to_rfc3339()
     });
+    
+    println!("create_task: Creating task with data: {}", task_data);
 
     let response = db
         .execute_query("tasks", "POST", Some(task_data))
         .await
         .map_err(|e| format!("Failed to create task: {}", e))?;
 
-    let created_task: Task = serde_json::from_value(response)
+    // The response should be an array with the created record
+    let created_tasks: Vec<Task> = serde_json::from_value(response)
         .map_err(|e| format!("Failed to parse created task: {}", e))?;
-
-    Ok(created_task)
+    
+    if let Some(created_task) = created_tasks.into_iter().next() {
+        Ok(created_task)
+    } else {
+        Err("No task was created".to_string())
+    }
 }
 
 #[tauri::command]
@@ -341,6 +452,7 @@ pub async fn get_tasks_by_assignee(
     assignee_id: String,
 ) -> Result<Vec<Task>, String> {
     let url = format!("{}/rest/v1/tasks?assignee_id=eq.{}", db.base_url, assignee_id);
+    println!("get_tasks_by_assignee: URL: {}", url);
     let response = db.client
         .get(&url)
         .header("apikey", &db.api_key)
@@ -349,7 +461,13 @@ pub async fn get_tasks_by_assignee(
         .await
         .map_err(|e| format!("Failed to fetch tasks: {}", e))?;
 
+    println!("get_tasks_by_assignee: Response status: {}", response.status());
+
     let tasks: Vec<Task> = response.json().await.map_err(|e| format!("Failed to parse tasks: {}", e))?;
+    println!("get_tasks_by_assignee: Found {} tasks", tasks.len());
+    for task in &tasks {
+        println!("  Task: {} - {} - assignee: {:?}", task.id, task.title, task.assignee_id);
+    }
     Ok(tasks)
 }
 
@@ -407,6 +525,31 @@ pub async fn update_task(
     } else {
         Err("No task was updated".to_string())
     }
+}
+
+#[tauri::command]
+pub async fn delete_task(db: State<'_, Database>, taskId: String) -> Result<(), String> {
+    println!("Delete task command called with taskId: {}", taskId);
+    
+    let url = format!("{}/rest/v1/tasks?id=eq.{}", db.base_url, taskId);
+    println!("Delete task URL: {}", url);
+    
+    let response = db.client
+        .delete(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to delete task: {}", e))?;
+
+    println!("Delete task response status: {}", response.status());
+
+    if !response.status().is_success() {
+        return Err(format!("Failed to delete task: {}", response.status()));
+    }
+
+    println!("Task deleted successfully");
+    Ok(())
 }
 
 // ===== APPLICATION COMMANDS =====
@@ -557,10 +700,15 @@ pub async fn create_time_entry(
         .await
         .map_err(|e| format!("Failed to create time entry: {}", e))?;
 
-    let created_entry: TimeEntry = serde_json::from_value(response)
+    // The response should be an array with the created record
+    let created_entries: Vec<TimeEntry> = serde_json::from_value(response)
         .map_err(|e| format!("Failed to parse created time entry: {}", e))?;
-
-    Ok(created_entry)
+    
+    if let Some(created_entry) = created_entries.into_iter().next() {
+        Ok(created_entry)
+    } else {
+        Err("No time entry was created".to_string())
+    }
 }
 
 #[tauri::command]
@@ -766,7 +914,27 @@ pub async fn get_my_applications(db: State<'_, Database>) -> Result<Vec<Applicat
 
 #[tauri::command]
 pub async fn get_my_tasks(db: State<'_, Database>) -> Result<Vec<Task>, String> {
-    get_tasks_by_assignee(db, get_default_user_id()).await
+    // For now, get ALL tasks instead of filtering by assignee
+    // This will help us test if the issue is with user assignment or task retrieval
+    let url = format!("{}/rest/v1/tasks", db.base_url);
+    println!("get_my_tasks: Getting ALL tasks from URL: {}", url);
+    
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get tasks: {}", e))?;
+
+    println!("get_my_tasks: Response status: {}", response.status());
+
+    let tasks: Vec<Task> = response.json().await.map_err(|e| format!("Failed to parse tasks: {}", e))?;
+    println!("get_my_tasks: Found {} tasks total", tasks.len());
+    for task in &tasks {
+        println!("  Task: {} - {} - assignee: {:?} - status: {:?}", task.id, task.title, task.assignee_id, task.status);
+    }
+    Ok(tasks)
 }
 
 #[tauri::command]

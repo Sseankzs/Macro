@@ -10,6 +10,9 @@ use tauri::Listener;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load environment variables from .env file
+    dotenv::dotenv().ok();
+    
     tauri::Builder::default()
         .setup(|app| {
             // Initialize logging
@@ -43,20 +46,25 @@ pub fn run() {
             create_user,
             get_user,
             get_users_by_team,
+            get_all_users,
             update_user,
+            delete_user,
             // Team commands
             create_team,
             get_team,
             get_all_teams,
+            delete_team,
             // Project commands
             create_project,
             get_projects_by_team,
             get_project,
+            get_all_projects,
             // Task commands
             create_task,
             get_tasks_by_project,
             get_tasks_by_assignee,
             update_task,
+            delete_task,
             // Application commands
             create_application,
             get_applications_by_user,

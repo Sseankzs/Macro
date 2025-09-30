@@ -102,6 +102,7 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum UserRole {
     Owner,
     Manager,
@@ -120,11 +121,11 @@ pub struct Team {
 pub struct Project {
     pub id: String,
     pub name: String,
-    pub team_id: String,
-    pub manager_id: String,
+    pub team_id: Option<String>,
+    pub manager_id: Option<String>,
     pub description: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,23 +133,27 @@ pub struct Task {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
-    pub project_id: String,
+    pub project_id: Option<String>,
     pub assignee_id: Option<String>,
     pub status: TaskStatus,
     pub priority: Option<TaskPriority>,
     pub due_date: Option<chrono::DateTime<chrono::Utc>>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskStatus {
+    #[serde(rename = "todo")]
     Todo,
+    #[serde(rename = "in_progress")]
     InProgress,
+    #[serde(rename = "done")]
     Done,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TaskPriority {
     Low,
     Medium,

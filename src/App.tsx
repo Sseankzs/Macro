@@ -10,6 +10,11 @@ import LogsPage from './LogsPage'
 import { DashboardCacheProvider } from './contexts/DashboardCacheContext'
 import { invoke } from '@tauri-apps/api/core'
 
+// Check if we're running in Tauri environment
+const isTauri = () => {
+  return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
+}
+
 function App() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -22,18 +27,25 @@ function App() {
     try {
       console.log('Login attempt:', { email, password })
       
-      // Initialize database and login
-      const success = await invoke<boolean>('initialize_database_and_login', {
-        email,
-        password
-      })
-      
-      if (success) {
-        console.log('Login successful, database initialized')
-        setIsLoggedIn(true)
+      if (isTauri()) {
+        // Running in Tauri desktop app
+        const success = await invoke<boolean>('initialize_database_and_login', {
+          email,
+          password
+        })
+        
+        if (success) {
+          console.log('Login successful, database initialized')
+          setIsLoggedIn(true)
+        } else {
+          console.error('Login failed')
+          alert('Login failed. Please check your credentials.')
+        }
       } else {
-        console.error('Login failed')
-        alert('Login failed. Please check your credentials.')
+        // Running in browser - development mode
+        console.log('Running in browser mode - auto-login for development')
+        // Simulate successful login for development
+        setIsLoggedIn(true)
       }
     } catch (error) {
       console.error('Login error:', error)
@@ -46,11 +58,15 @@ function App() {
   useEffect(() => {
     if (isLoggedIn) {
       const startTracking = async () => {
-        try {
-          await invoke('start_activity_tracking')
-          console.log('Activity tracking started on login')
-        } catch (error) {
-          console.error('Failed to start activity tracking on login:', error)
+        if (isTauri()) {
+          try {
+            await invoke('start_activity_tracking')
+            console.log('Activity tracking started on login')
+          } catch (error) {
+            console.error('Failed to start activity tracking on login:', error)
+          }
+        } else {
+          console.log('Activity tracking not available in browser mode')
         }
       }
       
@@ -60,11 +76,15 @@ function App() {
 
   const handleLogout = async () => {
     // Stop activity tracking when user logs out
-    try {
-      await invoke('stop_activity_tracking')
-      console.log('Activity tracking stopped on logout')
-    } catch (error) {
-      console.error('Failed to stop activity tracking on logout:', error)
+    if (isTauri()) {
+      try {
+        await invoke('stop_activity_tracking')
+        console.log('Activity tracking stopped on logout')
+      } catch (error) {
+        console.error('Failed to stop activity tracking on logout:', error)
+      }
+    } else {
+      console.log('Activity tracking not available in browser mode')
     }
     
     setIsLoggedIn(false)

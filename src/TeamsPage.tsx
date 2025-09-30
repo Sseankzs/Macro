@@ -1,7 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import './TeamsPage.css';
 import Sidebar from './Sidebar';
+import AddSectionModal from './AddSectionModal';
+import AddMemberModal from './AddMemberPage';
 import { invoke } from '@tauri-apps/api/core';
+import { TeamsSkeletonGrid, LoadingOverlay } from './components/LoadingComponents';
+
+// Check if we're running in Tauri environment
+const isTauri = () => {
+  return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
+}
+
+interface Team {
+  id: string;
+  team_name: string;
+  created_at?: string;
+  updated_at?: string;
+}
 
 interface TeamMember {
   id: string;
@@ -11,7 +26,7 @@ interface TeamMember {
   hoursTracked: number;
   currentTask: string;
   currentUrl: string;
-  category: 'frontend' | 'backend' | 'design' | 'management';
+  team_id?: string;
   avatar: string;
   status: 'online' | 'away' | 'busy' | 'offline';
 }
@@ -22,124 +37,100 @@ interface TeamsPageProps {
 }
 
 function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
+  const [teams, setTeams] = useState<Team[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAddSectionModal, setShowAddSectionModal] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{type: 'member' | 'team', id: string, name: string} | null>(null);
 
-  // Load team members from backend
-  useEffect(() => {
-    const loadTeamMembers = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  // Load teams and team members from backend
+  const loadTeamsAndMembers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      if (isTauri()) {
+        // Load teams from database
+        const teamsData = await invoke('get_all_teams') as Team[];
+        console.log('Teams loaded:', teamsData);
+        setTeams(teamsData);
         
-        // Fetch team members from Tauri backend
-        const backendMembers = await invoke('get_all_teams') as TeamMember[];
+        // Load all users
+        const allUsers = await invoke('get_all_users') as any[];
+        console.log('All users loaded:', allUsers);
         
-        // Transform backend members to frontend format
-        const frontendMembers: TeamMember[] = backendMembers.map(member => ({
-          id: member.id,
-          name: member.name,
-          position: member.position,
-          inProgressTasks: member.inProgressTasks,
-          hoursTracked: member.hoursTracked,
-          currentTask: member.currentTask,
-          currentUrl: member.currentUrl,
-          category: member.category,
-          avatar: member.avatar,
-          status: member.status
+        // Transform users to team members
+        const members: TeamMember[] = allUsers.map(user => ({
+          id: user.id,
+          name: user.name,
+          position: user.role === 'Owner' ? 'Team Owner' : 
+                   user.role === 'Manager' ? 'Team Manager' : 'Team Member',
+          inProgressTasks: 0, // TODO: Get real data
+          hoursTracked: 0, // TODO: Get real data
+          currentTask: 'No current task', // TODO: Get real data
+          currentUrl: '',
+          team_id: user.team_id,
+          avatar: '👤',
+          status: 'online' as const
         }));
         
-        setTeamMembers(frontendMembers);
-      } catch (err) {
-        console.error('Failed to load team members:', err);
-        setError('Failed to load team members. Please try again.');
+        setTeamMembers(members);
+      } else {
+        // Browser mode - use mock data
+        const mockTeams: Team[] = [
+          { id: '1', team_name: 'Frontend Team' },
+          { id: '2', team_name: 'Backend Team' },
+          { id: '3', team_name: 'Design Team' },
+          { id: '4', team_name: 'Management Team' }
+        ];
+        setTeams(mockTeams);
         
-        // Fallback to sample data if backend fails
-        setTeamMembers([
+        const mockMembers: TeamMember[] = [
           {
             id: '1',
-            name: 'Sarah Johnson',
+            name: 'John Doe',
             position: 'Frontend Developer',
             inProgressTasks: 3,
-            hoursTracked: 6.5,
+            hoursTracked: 8.5,
             currentTask: 'Implement user dashboard',
-            currentUrl: 'github.com/project',
-            category: 'frontend',
-            avatar: '👩‍💻',
-            status: 'online'
-          },
-          {
-            id: '2',
-            name: 'Mike Chen',
-            position: 'Backend Developer',
-            inProgressTasks: 2,
-            hoursTracked: 7.2,
-            currentTask: 'API optimization',
-            currentUrl: 'api.docs',
-            category: 'backend',
+            currentUrl: 'https://github.com/project/dashboard',
+            team_id: '1',
             avatar: '👨‍💻',
             status: 'online'
           },
           {
-            id: '3',
-            name: 'Emily Rodriguez',
-            position: 'UI/UX Designer',
-            inProgressTasks: 1,
-            hoursTracked: 5.8,
-            currentTask: 'Mobile wireframes',
-            currentUrl: 'figma.com/design',
-            category: 'design',
-            avatar: '👩‍🎨',
-            status: 'online'
-          },
-          {
-            id: '4',
-            name: 'David Kim',
-            position: 'Product Manager',
-            inProgressTasks: 4,
-            hoursTracked: 8.1,
-            currentTask: 'Sprint planning',
-            currentUrl: 'slack.com/channels',
-            category: 'management',
-            avatar: '👨‍💼',
-            status: 'busy'
-          },
-          {
-            id: '5',
-            name: 'Lisa Wang',
-            position: 'QA Engineer',
+            id: '2',
+            name: 'Jane Smith',
+            position: 'Backend Developer',
             inProgressTasks: 2,
-            hoursTracked: 4.3,
-            currentTask: 'Bug testing',
-            currentUrl: 'test-app.com',
-            category: 'backend',
-            avatar: '👩‍🔬',
-            status: 'away'
-          },
-          {
-            id: '6',
-            name: 'Alex Thompson',
-            position: 'DevOps Engineer',
-            inProgressTasks: 0,
-            hoursTracked: 0,
-            currentTask: '',
-            currentUrl: '',
-            category: 'backend',
-            avatar: '👨‍🔧',
-            status: 'offline'
+            hoursTracked: 7.2,
+            currentTask: 'API optimization',
+            currentUrl: 'https://github.com/project/api',
+            team_id: '2',
+            avatar: '👩‍💻',
+            status: 'busy'
           }
-        ]);
-      } finally {
-        setLoading(false);
+        ];
+        setTeamMembers(mockMembers);
       }
-    };
+    } catch (err) {
+      console.error('Failed to load teams and members:', err);
+      setError('Failed to load teams and members. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    loadTeamMembers();
+  useEffect(() => {
+    loadTeamsAndMembers();
   }, []);
 
   const [draggedMember, setDraggedMember] = useState<string | null>(null);
-  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
+  const [dragOverTeam, setDragOverTeam] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, memberId: string) => {
     setDraggedMember(memberId);
@@ -153,51 +144,115 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
     setDragOverCategory(null);
   };
 
-  const handleDragOver = (e: React.DragEvent, category: TeamMember['category']) => {
+  const handleDragOver = (e: React.DragEvent, teamId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverCategory(category);
+    setDragOverTeam(teamId);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
-    setDragOverCategory(null);
+    setDragOverTeam(null);
   };
 
-  const handleDrop = async (e: React.DragEvent, newCategory: TeamMember['category']) => {
+  const handleDrop = async (e: React.DragEvent, newTeamId: string) => {
     e.preventDefault();
     if (draggedMember) {
+      // Don't update if dropped in the same team
+      const currentMember = teamMembers.find(member => member.id === draggedMember);
+      if (currentMember && currentMember.team_id === newTeamId) {
+        setDraggedMember(null);
+        setDragOverTeam(null);
+        return;
+      }
+      
       // Optimistically update the UI
       setTeamMembers(prevMembers =>
         prevMembers.map(member =>
-          member.id === draggedMember ? { ...member, category: newCategory } : member
+          member.id === draggedMember ? { ...member, team_id: newTeamId } : member
         )
       );
       
       // Update the backend
       try {
-        await invoke('update_user', {
-          userId: draggedMember.id,
-          teamId: newCategory
-        });
+        if (isTauri()) {
+          await invoke('update_user', {
+            user_id: draggedMember,
+            team_id: newTeamId
+          });
+          console.log('User team updated successfully');
+        } else {
+          console.log('User update not available in browser mode');
+        }
       } catch (error) {
-        console.error('Failed to update team member category:', error);
+        console.error('Failed to update team member team:', error);
         // Revert the UI change if backend update fails
         setTeamMembers(prevMembers =>
           prevMembers.map(member =>
-            member.id === draggedMember ? { ...member, category: member.category } : member
+            member.id === draggedMember ? { ...member, team_id: currentMember?.team_id } : member
           )
         );
-        setError('Failed to update team member category. Please try again.');
+        setError('Failed to update team member team. Please try again.');
       }
       
       setDraggedMember(null);
-      setDragOverCategory(null);
+      setDragOverTeam(null);
     }
   };
 
-  const getMembersByCategory = (category: TeamMember['category']) => {
-    return teamMembers.filter(member => member.category === category);
+  const getMembersByTeam = (teamId: string) => {
+    return teamMembers.filter(member => member.team_id === teamId);
+  };
+
+  const getUnassignedMembers = () => {
+    return teamMembers.filter(member => !member.team_id || member.team_id === 'N/A');
+  };
+
+  // Delete member function
+  const handleDeleteMember = (memberId: string, memberName: string) => {
+    setDeleteTarget({ type: 'member', id: memberId, name: memberName });
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      if (deleteTarget.type === 'member') {
+        if (isTauri()) {
+          await invoke('delete_user', { userId: deleteTarget.id });
+          console.log('Member deleted successfully');
+        }
+        
+        // Remove from local state
+        setTeamMembers(prev => prev.filter(member => member.id !== deleteTarget.id));
+      } else if (deleteTarget.type === 'team') {
+        if (isTauri()) {
+          await invoke('delete_team', { teamId: deleteTarget.id });
+          console.log('Team deleted successfully');
+        }
+        
+        // Remove team from local state
+        setTeams(prev => prev.filter(team => team.id !== deleteTarget.id));
+        
+        // Move team members to unassigned
+        setTeamMembers(prev => prev.map(member => 
+          member.team_id === deleteTarget.id ? { ...member, team_id: undefined } : member
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      setError(`Failed to delete ${deleteTarget.name}. Please try again.`);
+    } finally {
+      setShowDeleteConfirm(false);
+      setDeleteTarget(null);
+    }
+  };
+
+  // Delete team function
+  const handleDeleteTeam = (teamId: string, teamName: string) => {
+    setDeleteTarget({ type: 'team', id: teamId, name: teamName });
+    setShowDeleteConfirm(true);
   };
 
   const getStatusColor = (status: TeamMember['status']) => {
@@ -226,10 +281,10 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
 
     return (
       <div
-        className="team-member-card"
-        draggable
-        onDragStart={(e) => handleDragStart(e, member.id)}
-        onDragEnd={handleDragEnd}
+        className={`team-member-card ${editMode ? 'edit-mode' : ''}`}
+        draggable={!editMode}
+        onDragStart={editMode ? undefined : (e) => handleDragStart(e, member.id)}
+        onDragEnd={editMode ? undefined : handleDragEnd}
       >
         <div className="member-header">
           <div className="member-avatar">
@@ -243,6 +298,15 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
             <h4 className="member-name">{member.name}</h4>
             <p className="member-position">{member.position}</p>
           </div>
+          {editMode && (
+            <button 
+              className="delete-member-btn"
+              onClick={() => handleDeleteMember(member.id, member.name)}
+              title={`Delete ${member.name}`}
+            >
+              ×
+            </button>
+          )}
         </div>
         
         <div className="progress-section">
@@ -273,19 +337,34 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
     );
   };
 
-  const CategoryColumn = ({ 
-    category
+  const TeamColumn = ({ 
+    team
   }: { 
-    category: TeamMember['category'];
+    team: Team;
   }) => (
     <div 
-      className={`category-column ${dragOverCategory === category ? 'drag-over' : ''}`}
-      onDragOver={(e) => handleDragOver(e, category)}
-      onDragLeave={handleDragLeave}
-      onDrop={(e) => handleDrop(e, category)}
+      className={`category-column ${dragOverTeam === team.id ? 'drag-over' : ''} ${editMode ? 'edit-mode' : ''}`}
+      onDragOver={editMode ? undefined : (e) => handleDragOver(e, team.id)}
+      onDragLeave={editMode ? undefined : handleDragLeave}
+      onDrop={editMode ? undefined : (e) => handleDrop(e, team.id)}
     >
       <div className="column-content">
-        {getMembersByCategory(category).map(member => (
+        {getMembersByTeam(team.id).map(member => (
+          <TeamMemberCard key={member.id} member={member} />
+        ))}
+      </div>
+    </div>
+  );
+
+  const UnassignedColumn = () => (
+    <div 
+      className={`category-column ${dragOverTeam === 'unassigned' ? 'drag-over' : ''}`}
+      onDragOver={(e) => handleDragOver(e, 'unassigned')}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => handleDrop(e, 'unassigned')}
+    >
+      <div className="column-content">
+        {getUnassignedMembers().map(member => (
           <TeamMemberCard key={member.id} member={member} />
         ))}
       </div>
@@ -304,10 +383,40 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
         <div className="teams-container">
           <div className="teams-header">
             <h1>Team Management</h1>
-            <div className="header-actions">
-              <button className="btn-secondary">Add Section</button>
-              <button className="btn-primary">Add Member</button>
-            </div>
+              <div className="header-actions">
+                {!editMode ? (
+                  <>
+                    <button 
+                      className="btn-secondary" 
+                      onClick={() => setShowAddSectionModal(true)}
+                      disabled={loading}
+                    >
+                      Add Section
+                    </button>
+                    <button 
+                      className="btn-primary"
+                      onClick={() => setShowAddMemberModal(true)}
+                      disabled={loading}
+                    >
+                      Add Member
+                    </button>
+                    <button 
+                      className="btn-edit"
+                      onClick={() => setEditMode(true)}
+                      disabled={loading}
+                    >
+                      Edit
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    className="btn-done"
+                    onClick={() => setEditMode(false)}
+                  >
+                    Done
+                  </button>
+                )}
+              </div>
           </div>
           
           {error && (
@@ -324,68 +433,126 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
           )}
           
           {loading && (
-            <div className="loading-message" style={{ 
-              textAlign: 'center', 
-              padding: '40px', 
-              color: '#666' 
-            }}>
-              Loading team members...
+            <div className="content-area">
+              <TeamsSkeletonGrid />
             </div>
           )}
           
-          <div className="content-area">
-            <div className="teams-grid">
-              <div className="category-section">
-                <div className="category-title">
-                  <div className="category-title-section">
-                    <h3 className="category-title-text">Frontend</h3>
-                    <span className="category-count">{getMembersByCategory('frontend').length}</span>
+          {!loading && (
+            <div className="content-area">
+              {teams.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-content">
+                    <h3>No teams yet</h3>
+                    <p>Create your first team to get started organizing your team members.</p>
+                    <button 
+                      className="btn-primary"
+                      onClick={() => setShowAddSectionModal(true)}
+                    >
+                      Create First Team
+                    </button>
                   </div>
                 </div>
-                <CategoryColumn 
-                  category="frontend" 
-                />
-              </div>
-              
-              <div className="category-section">
-                <div className="category-title">
-                  <div className="category-title-section">
-                    <h3 className="category-title-text">Backend</h3>
-                    <span className="category-count">{getMembersByCategory('backend').length}</span>
-                  </div>
+              ) : (
+                <div className="teams-grid">
+                  {/* Render each team as a section */}
+                  {teams.map(team => (
+                    <div key={team.id} className="category-section">
+                      <div className="category-title">
+                        <div className="category-title-section">
+                          <h3 className="category-title-text">{team.team_name}</h3>
+                          <span className="category-count">{getMembersByTeam(team.id).length}</span>
+                        </div>
+                        {editMode && (
+                          <button 
+                            className="delete-team-btn"
+                            onClick={() => handleDeleteTeam(team.id, team.team_name)}
+                            title={`Delete ${team.team_name} team`}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                      <TeamColumn team={team} />
+                    </div>
+                  ))}
+                  
+                  {/* Show unassigned members if any exist */}
+                  {getUnassignedMembers().length > 0 && (
+                    <div className="category-section">
+                      <div className="category-title">
+                        <div className="category-title-section">
+                          <h3 className="category-title-text">Unassigned</h3>
+                          <span className="category-count">{getUnassignedMembers().length}</span>
+                        </div>
+                      </div>
+                      <UnassignedColumn />
+                    </div>
+                  )}
                 </div>
-                <CategoryColumn 
-                  category="backend" 
-                />
-              </div>
-              
-              <div className="category-section">
-                <div className="category-title">
-                  <div className="category-title-section">
-                    <h3 className="category-title-text">Design</h3>
-                    <span className="category-count">{getMembersByCategory('design').length}</span>
-                  </div>
-                </div>
-                <CategoryColumn 
-                  category="design" 
-                />
-              </div>
-              
-              <div className="category-section">
-                <div className="category-title">
-                  <div className="category-title-section">
-                    <h3 className="category-title-text">Management</h3>
-                    <span className="category-count">{getMembersByCategory('management').length}</span>
-                  </div>
-                </div>
-                <CategoryColumn 
-                  category="management" 
-                />
-              </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      <AddSectionModal 
+        isOpen={showAddSectionModal}
+        onClose={() => setShowAddSectionModal(false)}
+        onSectionAdded={() => {
+          setShowAddSectionModal(false);
+          // Reload teams and members
+          loadTeamsAndMembers();
+        }}
+      />
+      
+      <AddMemberModal 
+        isOpen={showAddMemberModal}
+        onClose={() => setShowAddMemberModal(false)}
+        onMemberAdded={() => {
+          setShowAddMemberModal(false);
+          // Reload teams and members
+          loadTeamsAndMembers();
+        }}
+      />
+      
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && deleteTarget && (
+        <div className="delete-confirm-overlay" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="delete-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="delete-confirm-header">
+              <h3>Delete {deleteTarget.type === 'member' ? 'Member' : 'Team'}</h3>
+            </div>
+            <div className="delete-confirm-content">
+              <p>
+                Are you sure you want to delete <strong>"{deleteTarget.name}"</strong>?
+              </p>
+              {deleteTarget.type === 'team' && (
+                <p className="warning-text">
+                  All members in this team will become unassigned.
+                </p>
+              )}
+              <p className="warning-text">
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="delete-confirm-actions">
+              <button 
+                className="cancel-btn"
+                onClick={() => setShowDeleteConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="delete-btn"
+                onClick={confirmDelete}
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

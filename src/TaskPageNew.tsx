@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './TaskPage.css';
 import Sidebar from './Sidebar';
-import AddTaskModal from './AddTaskModal';
 import { invoke } from '@tauri-apps/api/core';
-import { TasksSkeletonGrid } from './components/LoadingComponents';
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -15,10 +13,10 @@ interface BackendTask {
   id: string;
   title: string;
   description?: string;
-  project_id: string | null;
+  project_id: string;
   assignee_id?: string;
-  status: 'todo' | 'in_progress' | 'done'; // Backend returns lowercase
-  priority?: 'low' | 'medium' | 'high'; // Backend returns lowercase
+  status: 'Todo' | 'InProgress' | 'Done';
+  priority?: 'Low' | 'Medium' | 'High';
   due_date?: string;
   created_at: string;
   updated_at: string;
@@ -41,7 +39,18 @@ interface Task {
   project_name?: string;
 }
 
-// Team member interface for task assignment
+// Team and Project interfaces for task assignment
+interface Team {
+  id: string;
+  team_name: string;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  team_id: string;
+}
+
 interface TeamMember {
   id: string;
   name: string;
@@ -55,6 +64,9 @@ interface TaskPageProps {
 
 function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -71,51 +83,41 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       setError(null);
       
       if (isTauri()) {
-        // Load tasks and team members in parallel
-        const [backendTasks, backendMembers] = await Promise.all([
+        // Load tasks, teams, projects, and team members in parallel
+        const [backendTasks, backendTeams, backendProjects, backendMembers] = await Promise.all([
           invoke('get_my_tasks') as Promise<BackendTask[]>,
+          invoke('get_all_teams') as Promise<Team[]>,
+          invoke('get_all_projects') as Promise<Project[]>,
           invoke('get_all_users') as Promise<TeamMember[]>
         ]);
 
-        console.log('=== BACKEND DATA DEBUG ===');
-        console.log('Backend tasks:', JSON.stringify(backendTasks, null, 2));
-        console.log('Backend members:', JSON.stringify(backendMembers, null, 2));
-        console.log('========================');
+        console.log('Loaded data:', { backendTasks, backendTeams, backendProjects, backendMembers });
 
-        // Transform tasks with proper assignee names
+        // Transform tasks with proper assignee and project names
         const transformedTasks: Task[] = backendTasks.map(task => {
           const assignee = backendMembers.find(member => member.id === task.assignee_id);
-          
-          // Convert backend status to frontend status
-          const frontendStatus = task.status === 'todo' ? 'Todo' :
-                                task.status === 'in_progress' ? 'InProgress' : 'Done';
-          
-          // Convert backend priority to frontend priority
-          const frontendPriority = task.priority === 'low' ? 'Low' :
-                                  task.priority === 'medium' ? 'Medium' :
-                                  task.priority === 'high' ? 'High' : 'Medium';
+          const project = backendProjects.find(proj => proj.id === task.project_id);
           
           return {
             id: task.id,
             title: task.title,
             description: task.description || '',
-            project_id: task.project_id || '',
+            project_id: task.project_id,
             assignee_id: task.assignee_id,
-            status: frontendStatus,
-            priority: frontendPriority,
+            status: task.status,
+            priority: task.priority || 'Medium',
             due_date: task.due_date,
             created_at: task.created_at,
             updated_at: task.updated_at,
             assignee_name: assignee?.name,
-            project_name: 'Unassigned Project'
+            project_name: project?.name
           };
         });
 
-        console.log('=== FRONTEND TRANSFORMATION DEBUG ===');
-        console.log('Transformed tasks:', JSON.stringify(transformedTasks, null, 2));
-        console.log('=====================================');
-        
         setTasks(transformedTasks);
+        setTeams(backendTeams);
+        setProjects(backendProjects);
+        setTeamMembers(backendMembers);
       } else {
         // Browser mode - use mock data
         const mockTasks: Task[] = [
@@ -164,6 +166,12 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         ];
 
         setTasks(mockTasks);
+        setTeams([{ id: 'team-1', team_name: 'Frontend Team' }]);
+        setProjects([{ id: 'project-1', name: 'Frontend App', team_id: 'team-1' }]);
+        setTeamMembers([
+          { id: 'user-1', name: 'John Doe', team_id: 'team-1' },
+          { id: 'user-2', name: 'Jane Smith', team_id: 'team-1' }
+        ]);
       }
     } catch (err) {
       console.error('Failed to load data:', err);
@@ -179,12 +187,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
 
   // Get tasks by status
   const getTasksByStatus = (status: 'Todo' | 'InProgress' | 'Done') => {
-    const filteredTasks = tasks.filter(task => task.status === status);
-    console.log(`=== TASKS FOR STATUS: ${status} ===`);
-    console.log('All tasks:', tasks);
-    console.log('Filtered tasks:', filteredTasks);
-    console.log('===============================');
-    return filteredTasks;
+    return tasks.filter(task => task.status === status);
   };
 
   // Get priority color
@@ -431,40 +434,35 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             </div>
           )}
           
-          {loading ? (
-            <TasksSkeletonGrid />
-          ) : (
-            <div className="task-board">
-              <StatusColumn 
-                status="Todo" 
-                title="To Do" 
-                count={getTasksByStatus('Todo').length} 
-              />
-              <StatusColumn 
-                status="InProgress" 
-                title="In Progress" 
-                count={getTasksByStatus('InProgress').length} 
-              />
-              <StatusColumn 
-                status="Done" 
-                title="Done" 
-                count={getTasksByStatus('Done').length} 
-              />
+          {loading && (
+            <div className="loading-message" style={{ 
+              textAlign: 'center', 
+              padding: '40px', 
+              color: '#666' 
+            }}>
+              Loading tasks...
             </div>
           )}
+          
+          <div className="task-board">
+            <StatusColumn 
+              status="Todo" 
+              title="To Do" 
+              count={getTasksByStatus('Todo').length} 
+            />
+            <StatusColumn 
+              status="InProgress" 
+              title="In Progress" 
+              count={getTasksByStatus('InProgress').length} 
+            />
+            <StatusColumn 
+              status="Done" 
+              title="Done" 
+              count={getTasksByStatus('Done').length} 
+            />
+          </div>
         </div>
       </div>
-      
-      {/* Add Task Modal */}
-      <AddTaskModal 
-        isOpen={showAddTaskModal}
-        onClose={() => setShowAddTaskModal(false)}
-        onTaskAdded={() => {
-          setShowAddTaskModal(false);
-          // Reload tasks
-          loadAllData();
-        }}
-      />
       
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && deleteTarget && (

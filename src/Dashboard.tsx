@@ -6,6 +6,11 @@ import { ResponsiveBar } from '@nivo/bar';
 import { ResponsivePie } from '@nivo/pie';
 import { useDashboardCache } from './contexts/DashboardCacheContext';
 
+// Check if we're running in Tauri environment
+const isTauri = () => {
+  return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
+}
+
 interface CurrentActivity {
   app_name: string;
   app_category: string;
@@ -396,19 +401,37 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     }
     
     try {
-      const activity = await invoke('get_current_activity') as CurrentActivity | null;
-      
-      if (activity) {
-        setCurrentActivity(activity);
-        // Cache the activity
-        updateCache({
-          currentActivity: activity,
-          currentActivityTimestamp: Date.now()
-        });
+      if (isTauri()) {
+        const activity = await invoke('get_current_activity') as CurrentActivity | null;
+        
+        if (activity) {
+          setCurrentActivity(activity);
+          // Cache the activity
+          updateCache({
+            currentActivity: activity,
+            currentActivityTimestamp: Date.now()
+          });
+        } else {
+          setCurrentActivity(null);
+          updateCache({
+            currentActivity: null,
+            currentActivityTimestamp: Date.now()
+          });
+        }
       } else {
-        setCurrentActivity(null);
+        // Browser mode - set mock activity for development
+        const mockActivity: CurrentActivity = {
+          app_name: 'Browser Development',
+          app_category: 'Development',
+          start_time: new Date().toISOString(),
+          duration_minutes: 0,
+          duration_hours: 0,
+          is_active: true,
+          active_apps_count: 1
+        };
+        setCurrentActivity(mockActivity);
         updateCache({
-          currentActivity: null,
+          currentActivity: mockActivity,
           currentActivityTimestamp: Date.now()
         });
       }
@@ -649,9 +672,15 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     const fetchUser = async () => {
       try {
         console.log('👤 Fetching user data...');
+        if (isTauri()) {
         const userData = await invoke('get_current_user');
-        console.log('✅ User data received:', userData);
+          console.log('✅ User data received:', userData);
         setUser(userData as { name: string });
+        } else {
+          // Browser mode - use default user for development
+          console.log('Running in browser mode - using default user');
+          setUser({ name: 'Dev User' });
+        }
       } catch (error) {
         console.error('❌ Failed to fetch user:', error);
         // Fallback to default name if fetch fails
@@ -992,12 +1021,12 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
             <div className="charts-grid">
               {/* Left Column - Charts */}
               <div className="charts-left-column">
-                {/* Daily Time Distribution Chart - Show for Week/Month */}
-                {selectedTimePeriod !== 'today' && (
-                  <div className="chart-card ios-card">
-                    <div className="chart-header">
-                      <h3>Daily Time Distribution</h3>
-                    </div>
+            {/* Daily Time Distribution Chart - Show for Week/Month */}
+            {selectedTimePeriod !== 'today' && (
+              <div className="chart-card ios-card">
+                <div className="chart-header">
+                  <h3>Daily Time Distribution</h3>
+                </div>
                     <div className="nivo-container">
                       <ResponsiveBar
                         key={`bar-${windowWidth}`}
@@ -1045,19 +1074,19 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                           }}>
                             <strong>{indexValue}</strong><br />
                             {id}: {value}h
-                          </div>
+                    </div>
                         )}
                       />
-                    </div>
-                  </div>
-                )}
-                
-                {/* App Category Breakdown Chart - Show for Today */}
-                {selectedTimePeriod === 'today' && (
+                </div>
+              </div>
+            )}
+            
+            {/* App Category Breakdown Chart - Show for Today */}
+            {selectedTimePeriod === 'today' && (
                   <div className="chart-card ios-card">
-                    <div className="chart-header">
-                      <h3>App Category Breakdown</h3>
-                    </div>
+                <div className="chart-header">
+                  <h3>App Category Breakdown</h3>
+                </div>
                     <div className="nivo-pie-container">
                       <ResponsivePie
                         key={`pie-${windowWidth}`}
@@ -1087,7 +1116,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                           }}>
                             <strong>{datum.label}</strong><br />
                             {datum.value}%
-                          </div>
+                      </div>
                         )}
                       />
                     </div>
@@ -1127,9 +1156,9 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                           <div className="table-data-cell app-name-cell">
                             <div className="app-icon-small">💻</div>
                             <span className="app-name">{item.application}</span>
-                          </div>
+                    </div>
                           <span className="table-data-cell time-cell">{item.time}</span>
-                        </div>
+                    </div>
                         ))
                       )}
                     </div>

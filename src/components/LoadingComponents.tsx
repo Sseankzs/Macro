@@ -1,0 +1,121 @@
+import React from 'react';
+import './LoadingComponents.css';
+
+// iOS-style spinner component
+export const IOSSpinner: React.FC<{ size?: 'small' | 'medium' | 'large' }> = ({ size = 'medium' }) => {
+  return (
+    <div className={`ios-spinner ios-spinner-${size}`}>
+      <div className="spinner-ring"></div>
+    </div>
+  );
+};
+
+// Skeleton card for team members
+export const TeamMemberSkeleton: React.FC = () => {
+  return (
+    <div className="team-member-skeleton">
+      <div className="skeleton-header">
+        <div className="skeleton-avatar">
+          <div className="skeleton-emoji"></div>
+          <div className="skeleton-status"></div>
+        </div>
+        <div className="skeleton-info">
+          <div className="skeleton-name"></div>
+          <div className="skeleton-position"></div>
+        </div>
+      </div>
+      
+      <div className="skeleton-progress">
+        <div className="skeleton-progress-bar">
+          <div className="skeleton-progress-fill"></div>
+        </div>
+        <div className="skeleton-progress-footer">
+          <div className="skeleton-hours"></div>
+          <div className="skeleton-percentage"></div>
+        </div>
+      </div>
+      
+      <div className="skeleton-task">
+        <div className="skeleton-task-pill"></div>
+      </div>
+    </div>
+  );
+};
+
+// Skeleton card for tasks
+export const TaskSkeleton: React.FC = () => {
+  return (
+    <div className="task-skeleton">
+      <div className="skeleton-task-header">
+        <div className="skeleton-priority"></div>
+        <div className="skeleton-title"></div>
+      </div>
+      
+      <div className="skeleton-description"></div>
+      
+      <div className="skeleton-meta">
+        <div className="skeleton-assignee">
+          <div className="skeleton-avatar-small"></div>
+          <div className="skeleton-assignee-name"></div>
+        </div>
+        <div className="skeleton-due-date"></div>
+      </div>
+      
+      <div className="skeleton-project"></div>
+    </div>
+  );
+};
+
+// Loading overlay with spinner
+export const LoadingOverlay: React.FC<{ message?: string }> = ({ message = "Loading..." }) => {
+  return (
+    <div className="loading-overlay">
+      <div className="loading-content">
+        <IOSSpinner size="large" />
+        <p className="loading-message">{message}</p>
+      </div>
+    </div>
+  );
+};
+
+// Skeleton grid for teams page
+export const TeamsSkeletonGrid: React.FC = () => {
+  return (
+    <div className="teams-skeleton-grid">
+      {[1, 2, 3, 4].map((teamIndex) => (
+        <div key={teamIndex} className="skeleton-team-section">
+          <div className="skeleton-team-title">
+            <div className="skeleton-team-name"></div>
+            <div className="skeleton-team-count"></div>
+          </div>
+          <div className="skeleton-team-column">
+            {[1, 2, 3].map((memberIndex) => (
+              <TeamMemberSkeleton key={memberIndex} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Skeleton grid for tasks page
+export const TasksSkeletonGrid: React.FC = () => {
+  return (
+    <div className="tasks-skeleton-grid">
+      {['Todo', 'In Progress', 'Done'].map((status, index) => (
+        <div key={status} className="skeleton-status-column">
+          <div className="skeleton-status-header">
+            <div className="skeleton-status-title"></div>
+            <div className="skeleton-status-count"></div>
+          </div>
+          <div className="skeleton-status-content">
+            {[1, 2, 3].map((taskIndex) => (
+              <TaskSkeleton key={taskIndex} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
