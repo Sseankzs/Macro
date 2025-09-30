@@ -76,6 +76,7 @@ pub fn run() {
             get_time_entries_by_app,
             update_time_entry,
             // Default user convenience commands
+            ensure_default_user_exists,
             get_current_user,
             get_current_user_id,
             get_my_applications,

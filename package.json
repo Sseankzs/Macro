@@ -17,7 +17,9 @@
     "@nivo/pie": "^0.99.0",
     "@supabase/supabase-js": "^2.58.0",
     "@tauri-apps/api": "^2.8.0",
+    "framer-motion": "^12.23.22",
     "react": "^19.1.1",
+    "react-circular-progressbar": "^2.2.0",
     "react-dom": "^19.1.1",
     "recharts": "^3.2.1"
   },

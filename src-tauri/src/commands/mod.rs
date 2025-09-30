@@ -898,6 +898,61 @@ pub async fn initialize_database_and_login(
 // ===== DEFAULT USER CONVENIENCE COMMANDS =====
 
 #[tauri::command]
+pub async fn ensure_default_user_exists(db: State<'_, Database>) -> Result<User, String> {
+    let default_user_id = get_default_user_id();
+    
+    // First, try to get the existing user
+    let url = format!("{}/rest/v1/users?id=eq.{}", db.base_url, default_user_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to check for existing user: {}", e))?;
+
+    if response.status().is_success() {
+        let users: Vec<User> = response.json().await
+            .map_err(|e| format!("Failed to parse users: {}", e))?;
+        
+        if let Some(existing_user) = users.first() {
+            println!("Default user already exists: {}", existing_user.name);
+            return Ok(existing_user.clone());
+        }
+    }
+
+    // User doesn't exist, create it
+    println!("Creating default user with ID: {}", default_user_id);
+    let default_user = get_default_user();
+    
+    let user_data = json!({
+        "id": default_user.id,
+        "name": default_user.name,
+        "email": default_user.email,
+        "team_id": default_user.team_id,
+        "current_project_id": default_user.current_project_id,
+        "role": "owner", // Convert enum to string
+        "created_at": now().to_rfc3339(),
+        "updated_at": now().to_rfc3339()
+    });
+
+    let response = db
+        .execute_query("users", "POST", Some(user_data))
+        .await
+        .map_err(|e| format!("Failed to create default user: {}", e))?;
+
+    let created_users: Vec<User> = serde_json::from_value(response)
+        .map_err(|e| format!("Failed to parse created user: {}", e))?;
+    
+    if let Some(created_user) = created_users.into_iter().next() {
+        println!("Successfully created default user: {}", created_user.name);
+        Ok(created_user)
+    } else {
+        Err("No user was created".to_string())
+    }
+}
+
+#[tauri::command]
 pub async fn get_current_user() -> Result<User, String> {
     Ok(get_default_user())
 }
@@ -954,6 +1009,19 @@ pub async fn create_my_application(
     category: Option<String>,
     is_tracked: Option<bool>,
 ) -> Result<Application, String> {
+    // Validate required fields
+    if name.trim().is_empty() {
+        return Err("Application name cannot be empty".to_string());
+    }
+    if process_name.trim().is_empty() {
+        return Err("Process name cannot be empty".to_string());
+    }
+    
+    // Ensure default user exists before creating application
+    let _user = ensure_default_user_exists(db.clone()).await
+        .map_err(|e| format!("Failed to ensure default user exists: {}", e))?;
+    
+    println!("Creating application: {} ({})", name, process_name);
     create_application(db, name, process_name, get_default_user_id(), icon_path, category, is_tracked).await
 }
 

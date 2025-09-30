@@ -5,8 +5,8 @@ import TaskPage from './TaskPage'
 import TeamsPage from './TeamsPage'
 import RegisterAppsPage from './RegisterAppsPage'
 import MetricBuilderPage from './MetricBuilderPage'
-import DetectedPage from './DetectedPage'
 import LogsPage from './LogsPage'
+import AIAssistantPage from './AIAssistantPage'
 import { DashboardCacheProvider } from './contexts/DashboardCacheContext'
 import { invoke } from '@tauri-apps/api/core'
 
@@ -19,7 +19,7 @@ function App() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs'>('dashboard')
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant'>('dashboard')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,7 +91,7 @@ function App() {
     setCurrentPage('dashboard')
   }
 
-  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => {
+  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => {
     setCurrentPage(page)
   }
 
@@ -111,11 +111,11 @@ function App() {
         {currentPage === 'metric-builder' && (
           <MetricBuilderPage onLogout={handleLogout} onPageChange={handlePageChange} />
         )}
-        {currentPage === 'detected' && (
-          <DetectedPage onLogout={handleLogout} onPageChange={handlePageChange} />
-        )}
         {currentPage === 'logs' && (
           <LogsPage onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+        {currentPage === 'ai-assistant' && (
+          <AIAssistantPage onLogout={handleLogout} onPageChange={handlePageChange} />
         )}
         {currentPage === 'dashboard' && (
           <Dashboard onLogout={handleLogout} onPageChange={handlePageChange} />

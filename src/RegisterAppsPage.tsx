@@ -11,7 +11,7 @@ interface App {
   icon_path?: string;
   category?: string;
   is_tracked?: boolean;
-  user_id?: string;
+  user_id: string; // Required field to match database schema
   created_at?: string;
   updated_at?: string;
   last_used?: string;
@@ -28,7 +28,7 @@ interface DetectedApp {
 
 interface RegisterAppsPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
 }
 
 function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
@@ -89,13 +89,24 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
     }
   };
 
-  // Load apps on component mount - no need to test database connection
+  // Load apps on component mount - ensure default user exists first
   useEffect(() => {
     const initializePage = async () => {
       console.log('🚀 Initializing RegisterAppsPage...');
       
-      // Only load apps - database connection is already established by Dashboard
-      await fetchApps();
+      try {
+        // Ensure the default user exists in the database
+        console.log('👤 Ensuring default user exists...');
+        await invoke('ensure_default_user_exists');
+        console.log('✅ Default user verified/created');
+        
+        // Load apps after ensuring user exists
+        await fetchApps();
+      } catch (error) {
+        console.error('❌ Failed to initialize page:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        setError(`Failed to initialize: ${errorMessage}`);
+      }
     };
     
     initializePage();
@@ -361,17 +372,31 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         return;
       }
 
+      // Trim whitespace and validate
+      const trimmedName = detectedApp.name.trim();
+      const trimmedProcessName = detectedApp.process_name.trim();
+      
+      if (trimmedName.length === 0) {
+        setError('Application name cannot be empty.');
+        return;
+      }
+      
+      if (trimmedProcessName.length === 0) {
+        setError('Process name cannot be empty.');
+        return;
+      }
+
       console.log('📝 Creating app with parameters:', {
-        name: detectedApp.name,
-        processName: detectedApp.process_name,
+        name: trimmedName,
+        processName: trimmedProcessName,
         iconPath: null,
         category: 'Detected',
         isTracked: true
       });
 
       const newApp = await invoke<App>('create_my_application', {
-        name: detectedApp.name,
-        processName: detectedApp.process_name,
+        name: trimmedName,
+        processName: trimmedProcessName,
         iconPath: null,
         category: 'Detected',
         isTracked: true

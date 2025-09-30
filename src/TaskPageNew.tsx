@@ -59,7 +59,7 @@ interface TeamMember {
 
 interface TaskPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
 }
 
 function TaskPage({ onLogout, onPageChange }: TaskPageProps) {

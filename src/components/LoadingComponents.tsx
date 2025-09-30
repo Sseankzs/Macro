@@ -103,7 +103,7 @@ export const TeamsSkeletonGrid: React.FC = () => {
 export const TasksSkeletonGrid: React.FC = () => {
   return (
     <div className="tasks-skeleton-grid">
-      {['Todo', 'In Progress', 'Done'].map((status, index) => (
+      {['Todo', 'In Progress', 'Done'].map((status) => (
         <div key={status} className="skeleton-status-column">
           <div className="skeleton-status-header">
             <div className="skeleton-status-title"></div>
@@ -116,6 +116,64 @@ export const TasksSkeletonGrid: React.FC = () => {
           </div>
         </div>
       ))}
+    </div>
+  );
+};
+
+// Skeleton grid for dashboard page
+export const DashboardSkeletonGrid: React.FC = () => {
+  return (
+    <div className="dashboard-skeleton-grid">
+      {/* Stats Section Skeleton */}
+      <div className="skeleton-stats-section">
+        <div className="skeleton-section-title"></div>
+        <div className="skeleton-stats-grid">
+          {[1, 2, 3, 4].map((statIndex) => (
+            <div key={statIndex} className="skeleton-stat-card">
+              <div className="skeleton-stat-header">
+                <div className="skeleton-stat-title"></div>
+                <div className="skeleton-stat-period"></div>
+              </div>
+              <div className="skeleton-stat-main">
+                <div className="skeleton-stat-number"></div>
+                <div className="skeleton-stat-change"></div>
+              </div>
+              <div className="skeleton-stat-subtitle"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Charts Section Skeleton */}
+      <div className="skeleton-charts-section">
+        <div className="skeleton-charts-header">
+          <div className="skeleton-section-title"></div>
+          <div className="skeleton-chart-controls">
+            {[1, 2, 3].map((btnIndex) => (
+              <div key={btnIndex} className="skeleton-chart-btn"></div>
+            ))}
+          </div>
+        </div>
+        <div className="skeleton-charts-grid">
+          <div className="skeleton-chart-card">
+            <div className="skeleton-chart-header">
+              <div className="skeleton-chart-title"></div>
+            </div>
+            <div className="skeleton-chart-content"></div>
+          </div>
+          <div className="skeleton-chart-card">
+            <div className="skeleton-chart-header">
+              <div className="skeleton-chart-title"></div>
+            </div>
+            <div className="skeleton-table-content">
+              <div className="skeleton-table-header"></div>
+              {[1, 2, 3, 4, 5].map((rowIndex) => (
+                <div key={rowIndex} className="skeleton-table-row"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

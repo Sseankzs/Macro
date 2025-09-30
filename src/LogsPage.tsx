@@ -26,7 +26,7 @@ interface Application {
 
 interface LogsPageProps {
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
 }
 
 function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
@@ -142,6 +142,18 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
   const endIndex = startIndex + itemsPerPage;
   const currentEntries = filteredEntries.slice(startIndex, endIndex);
 
+  // Debug logging
+  console.log('Logs Debug:', {
+    totalEntries: timeEntries.length,
+    filteredEntries: filteredEntries.length,
+    currentPage,
+    itemsPerPage,
+    totalPages,
+    startIndex,
+    endIndex,
+    currentEntriesCount: currentEntries.length
+  });
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
@@ -220,84 +232,98 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
         <div className="results-summary">
           <span>
             Showing {startIndex + 1}-{Math.min(endIndex, filteredEntries.length)} of {filteredEntries.length} entries
+            {filteredEntries.length !== timeEntries.length && (
+              <span> (filtered from {timeEntries.length} total)</span>
+            )}
           </span>
         </div>
 
-        {/* Table */}
-        <div className="logs-table-container">
-          {isLoading ? (
-            <div className="loading">Loading time entries...</div>
-          ) : error ? (
-            <div className="error">Error: {error}</div>
-          ) : (
-            <table className="logs-table">
-              <thead>
-                <tr>
-                  <th>Application</th>
-                  <th>Start Time</th>
-                  <th>End Time</th>
-                  <th>Duration</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentEntries.map((entry) => (
-                  <tr key={entry.id} className={entry.is_active ? 'active-entry' : ''}>
-                    <td className="app-cell">
-                      <div className="app-info">
-                        <span className="app-name">{getAppName(entry.app_id)}</span>
-                        {entry.app_id && applications.get(entry.app_id)?.category && (
-                          <span className="app-category">
-                            {applications.get(entry.app_id)?.category}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="time-cell">
-                      {formatTimestamp(entry.start_time, 'datetime')}
-                    </td>
-                    <td className="time-cell">
-                      {entry.end_time ? formatTimestamp(entry.end_time, 'datetime') : 'Active'}
-                    </td>
-                    <td className="duration-cell">
-                      {formatDuration(entry.duration_seconds)}
-                    </td>
-                    <td className="status-cell">
-                      <span className={`status-badge ${entry.is_active ? 'active' : 'completed'}`}>
-                        {entry.is_active ? 'Active' : 'Completed'}
-                      </span>
-                    </td>
+        {/* Table and Pagination */}
+        <div className="table-and-pagination">
+          {/* Table */}
+          <div className="logs-table-container">
+            {isLoading ? (
+              <div className="loading">Loading time entries...</div>
+            ) : error ? (
+              <div className="error">Error: {error}</div>
+            ) : (
+              <table className="logs-table">
+                <thead>
+                  <tr>
+                    <th>Application</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Duration</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {currentEntries.map((entry) => (
+                    <tr key={entry.id} className={entry.is_active ? 'active-entry' : ''}>
+                      <td className="app-cell">
+                        <div className="app-info">
+                          <span className="app-name">{getAppName(entry.app_id)}</span>
+                          {entry.app_id && applications.get(entry.app_id)?.category && (
+                            <span className="app-category">
+                              {applications.get(entry.app_id)?.category}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="time-cell">
+                        {formatTimestamp(entry.start_time, 'datetime')}
+                      </td>
+                      <td className="time-cell">
+                        {entry.end_time ? formatTimestamp(entry.end_time, 'datetime') : 'Active'}
+                      </td>
+                      <td className="duration-cell">
+                        {formatDuration(entry.duration_seconds)}
+                      </td>
+                      <td className="status-cell">
+                        <span className={`status-badge ${entry.is_active ? 'active' : 'completed'}`}>
+                          {entry.is_active ? 'Active' : 'Completed'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="pagination">
+              <button 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="pagination-btn"
+              >
+                Previous
+              </button>
+              
+              <div className="pagination-info">
+                Page {currentPage} of {totalPages} ({filteredEntries.length} total entries)
+              </div>
+              
+              <button 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="pagination-btn"
+              >
+                Next
+              </button>
+            </div>
+          )}
+          
+          {/* Show message if no entries */}
+          {!isLoading && !error && filteredEntries.length === 0 && (
+            <div className="no-entries">
+              <p>No time entries found for the selected criteria.</p>
+              <p>Try adjusting your filters or check if you have any tracked applications.</p>
+            </div>
           )}
         </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="pagination">
-            <button 
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="pagination-btn"
-            >
-              Previous
-            </button>
-            
-            <div className="pagination-info">
-              Page {currentPage} of {totalPages}
-            </div>
-            
-            <button 
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="pagination-btn"
-            >
-              Next
-            </button>
-          </div>
-        )}
           </div>
         </div>
       </div>

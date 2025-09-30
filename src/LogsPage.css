@@ -90,6 +90,8 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  gap: 1rem;
 }
 
 /* Controls */
@@ -173,15 +175,17 @@
 .logs-table-container {
   background: white;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
   border: 2px solid #e2e8f0;
-  margin-bottom: 0;
+  margin-bottom: 1rem;
+  flex-shrink: 0;
 }
 
 .logs-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
+  table-layout: auto;
 }
 
 .logs-table thead {
@@ -290,6 +294,7 @@
   background: #f8f9fa;
   border-radius: 8px;
   padding: 1rem;
+  flex-shrink: 0;
 }
 
 .pagination-btn {
@@ -331,6 +336,27 @@
   background: rgba(220, 38, 38, 0.1);
   border-radius: 8px;
   margin: 1rem;
+}
+
+.no-entries {
+  text-align: center;
+  padding: 3rem;
+  color: #6b7280;
+  font-size: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin: 1rem 0;
+}
+
+.no-entries p {
+  margin: 0.5rem 0;
+}
+
+.table-and-pagination {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Responsive Design */

@@ -2,9 +2,9 @@ import React, { useEffect } from 'react';
 import './Dashboard.css';
 
 interface SidebarProps {
-  currentPage: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs';
+  currentPage: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant';
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'detected' | 'logs') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
 }
 
 function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
@@ -63,17 +63,6 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
       )
     },
     {
-      id: 'detected' as const,
-      label: 'Detected',
-      icon: (
-        <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
-          <path d="M20.2 20.2L16 16m-8 0L3.8 3.8"/>
-        </svg>
-      )
-    },
-    {
       id: 'logs' as const,
       label: 'Logs',
       icon: (
@@ -83,6 +72,17 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
           <line x1="16" y1="13" x2="8" y2="13"/>
           <line x1="16" y1="17" x2="8" y2="17"/>
           <polyline points="10,9 9,9 8,9"/>
+        </svg>
+      )
+    },
+    {
+      id: 'ai-assistant' as const,
+      label: 'AI Assistant',
+      icon: (
+        <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
         </svg>
       )
     }

@@ -630,6 +630,8 @@ html, body {
   letter-spacing: 0.5px;
   padding: 0.125rem;
   border-right: 1px solid #dee2e6;
+  display: flex;
+  align-items: center;
 }
 
 .table-header-cell:last-child {
@@ -638,6 +640,7 @@ html, body {
 
 .time-header {
   text-align: center;
+  justify-content: center;
 }
 
 .table-body {

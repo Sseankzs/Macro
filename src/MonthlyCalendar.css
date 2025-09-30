@@ -1,0 +1,281 @@
+/* Monthly Calendar Styles */
+
+.monthly-calendar {
+  /* Removed container styling to reduce space usage */
+}
+
+/* Calendar Header */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.nav-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 32px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 12px;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-button-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-button svg {
+  color: #6c757d;
+}
+
+.nav-month-indicator {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #8e8e93;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.nav-button:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+  transform: translateY(-1px);
+}
+
+.calendar-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+/* Day Names Header */
+.day-names {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.day-name {
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #8e8e93;
+  padding: 0.5rem 0;
+}
+
+/* Calendar Grid */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.5rem;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  min-height: 80px;
+}
+
+.calendar-day:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.calendar-day.has-data {
+  background: white;
+  border-color: #dee2e6;
+}
+
+.calendar-day.selected {
+  background: #e3f2fd;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.day-number {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.25rem;
+}
+
+.progress-container {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+
+.progress-container svg {
+  stroke-width: 6;
+}
+
+.hours-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #495057;
+  text-align: center;
+  line-height: 1;
+}
+
+/* Pie Chart Modal */
+.pie-chart-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.pie-chart-modal {
+  background: white;
+  border-radius: 16px;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.pie-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.pie-chart-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.close-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.close-button:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.pie-chart-content {
+  padding: 1.5rem;
+}
+
+.pie-chart-container {
+  height: 300px;
+  width: 100%;
+}
+
+.no-data-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #8e8e93;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.pie-tooltip {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .monthly-calendar {
+    padding: 1rem;
+  }
+  
+  .calendar-title {
+    font-size: 1.25rem;
+  }
+  
+  .calendar-day {
+    min-height: 60px;
+  }
+  
+  .progress-container {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .hours-text {
+    font-size: 0.5rem;
+  }
+  
+  .pie-chart-modal {
+    margin: 1rem;
+    max-width: calc(100vw - 2rem);
+  }
+  
+  .pie-chart-container {
+    height: 250px;
+  }
+}
+
+@media (max-width: 480px) {
+  .calendar-day {
+    min-height: 50px;
+  }
+  
+  .progress-container {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .day-number {
+    font-size: 0.75rem;
+  }
+  
+  .pie-chart-container {
+    height: 200px;
+  }
+}
