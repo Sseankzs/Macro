@@ -25,6 +25,8 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState<string>('');
+  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -34,7 +36,19 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, streamingMessage]);
+
+  const streamText = (text: string, callback: (chunk: string) => void) => {
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index < text.length) {
+        callback(text.slice(0, index + 1));
+        index++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 15); // Adjust speed here (lower = faster)
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
@@ -47,19 +61,33 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const userInput = inputValue.trim();
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate AI response (replace with actual AI API call)
+    // Simulate AI response with streaming
     setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        content: generateAIResponse(inputValue.trim()),
-        isUser: false,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, aiResponse]);
+      const fullResponse = generateAIResponse(userInput);
       setIsTyping(false);
+      setIsStreaming(true);
+      setStreamingMessage('');
+      
+      streamText(fullResponse, (chunk) => {
+        setStreamingMessage(chunk);
+      });
+      
+      // Add the complete message after streaming finishes
+      setTimeout(() => {
+        const aiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          content: fullResponse,
+          isUser: false,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, aiResponse]);
+        setIsStreaming(false);
+        setStreamingMessage('');
+      }, fullResponse.length * 15 + 500); // Wait for streaming to complete
     }, 1500);
   };
 
@@ -125,23 +153,31 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
                         <div key={index}>{line}</div>
                       ))}
                     </div>
-                    <div className="message-time">
-                      {formatTime(message.timestamp)}
-                    </div>
                   </div>
                 </div>
               ))}
               
-               {isTyping && (
-                 <div className="message ai-message typing-message">
+               {(isTyping || isStreaming) && (
+                 <div className="message ai-message">
                    <div className="message-avatar">
                      <div className="ai-avatar"></div>
                    </div>
                    <div className="message-content">
-                     <div className="typing-indicator">
-                       <span></span>
-                       <span></span>
-                       <span></span>
+                     <div className="message-text">
+                       {isStreaming ? (
+                         <>
+                           {streamingMessage.split('\n').map((line, index) => (
+                             <div key={index}>{line}</div>
+                           ))}
+                           <span className="streaming-cursor">|</span>
+                         </>
+                       ) : (
+                         <span className="typing-indicator">
+                           <span></span>
+                           <span></span>
+                           <span></span>
+                         </span>
+                       )}
                      </div>
                    </div>
                  </div>
@@ -166,10 +202,7 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
                    onClick={handleSendMessage}
                    disabled={!inputValue.trim() || isTyping}
                  >
-                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                     <line x1="12" y1="19" x2="12" y2="5"></line>
-                     <polyline points="5,12 12,5 19,12"></polyline>
-                   </svg>
+                  ↑
                  </button>
                </div>
              </div>

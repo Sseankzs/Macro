@@ -28,7 +28,7 @@ interface DetectedApp {
 
 interface RegisterAppsPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
 }
 
 function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
@@ -45,49 +45,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   const [isLoadingDetectedApps, setIsLoadingDetectedApps] = useState(false);
 
 
-  // Enhanced debug function
-  const collectDebugInfo = async () => {
-    try {
-      console.log('🔍 Collecting debug information...');
-      
-      const debugData: any = {
-        timestamp: new Date().toISOString(),
-        apps: apps.length,
-        detectedApps: detectedApps.length,
-        error: error,
-        rlsErrors: rlsErrors,
-        environment: {
-          nodeEnv: import.meta.env.MODE,
-          hasSupabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
-          hasSupabaseKey: !!import.meta.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-        }
-      };
-
-      // Test database connection
-      try {
-        const dbTest = await invoke<boolean>('test_database_connection');
-        debugData.databaseTest = dbTest;
-      } catch (dbError) {
-        debugData.databaseError = dbError instanceof Error ? dbError.message : String(dbError);
-      }
-
-      // Test current user
-      try {
-        const currentUser = await invoke('get_current_user');
-        debugData.currentUser = currentUser;
-      } catch (userError) {
-        debugData.userError = userError instanceof Error ? userError.message : String(userError);
-      }
-
-      setDebugInfo(debugData);
-      console.log('📊 Debug info collected:', debugData);
-      
-      return debugData;
-    } catch (error) {
-      console.error('❌ Failed to collect debug info:', error);
-      return { error: error instanceof Error ? error.message : String(error) };
-    }
-  };
 
   // Load apps on component mount - ensure default user exists first
   useEffect(() => {
@@ -535,15 +492,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
               </p>
             </div>
             <div className="header-actions">
-
-              {/* Debug Button */}
-              <button 
-                className="debug-button"
-                onClick={collectDebugInfo}
-                title="Collect debug information"
-              >
-                🐛 Debug
-              </button>
 
 
               <button 

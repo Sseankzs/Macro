@@ -54,10 +54,11 @@
 }
 
 .header-info h1 {
+  color: #1d1d1f;
   margin: 0 0 0.5rem 0;
-  font-size: 1.875rem;
-  font-weight: 400;
-  color: #1a202c;
+  font-size: 24px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   display: flex;
   align-items: flex-end;
   height: 2.5rem;
@@ -73,33 +74,37 @@
 .header-actions {
   display: flex;
   gap: 1rem;
-  align-items: flex-start;
+  align-items: center;
   transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* Edit Mode Button */
 .edit-button {
-  background: #007aff;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 600;
+  background: none !important;
+  border: none !important;
+  color: #007AFF !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  letter-spacing: -0.01em;
-  min-width: 60px;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  padding: 8px 0 !important;
+  text-decoration: none !important;
+  border-radius: 0 !important;
+  min-width: auto !important;
+  letter-spacing: normal !important;
 }
 
 .edit-button:hover {
-  background: #0056b3;
-  transform: translateY(-0.5px);
-  border-color: #0056b3;
+  color: #0056CC !important;
+  text-decoration: underline !important;
+  transform: none !important;
+  background: none !important;
+  border: none !important;
 }
 
 .edit-button:active {
-  transform: translateY(0);
+  transform: none !important;
 }
 
 
@@ -743,32 +748,6 @@
   font-size: 1rem;
 }
 
-/* Debug Button */
-.debug-button {
-  background: #ff9500;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  letter-spacing: -0.01em;
-  min-width: 60px;
-  margin-right: 0.5rem;
-}
-
-.debug-button:hover {
-  background: #e6850e;
-  transform: translateY(-0.5px);
-  box-shadow: 0 2px 8px rgba(255, 149, 0, 0.3);
-}
-
-.debug-button:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 3px rgba(255, 149, 0, 0.3);
-}
 
 /* Test Connection Button */
 .test-connection-button {
