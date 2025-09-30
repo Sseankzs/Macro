@@ -22,9 +22,10 @@ interface TaskDetailModalProps {
   onClose: () => void;
   task: Task | null;
   onTaskUpdated?: () => void;
+  clickPosition?: { x: number; y: number };
 }
 
-function TaskDetailModal({ isOpen, onClose, task, onTaskUpdated }: TaskDetailModalProps) {
+function TaskDetailModal({ isOpen, onClose, task, onTaskUpdated, clickPosition }: TaskDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,11 +77,8 @@ function TaskDetailModal({ isOpen, onClose, task, onTaskUpdated }: TaskDetailMod
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      month: 'short',
+      day: 'numeric'
     });
   };
 
@@ -151,9 +149,17 @@ function TaskDetailModal({ isOpen, onClose, task, onTaskUpdated }: TaskDetailMod
     }
   };
 
+  // Calculate modal position
+  const modalStyle = clickPosition ? {
+    position: 'absolute' as const,
+    left: `${Math.min(clickPosition.x, window.innerWidth - 500)}px`,
+    top: `${Math.min(clickPosition.y, window.innerHeight - 100)}px`,
+    margin: '0'
+  } : {};
+
   return (
     <div className="task-detail-overlay" onClick={onClose}>
-      <div className="task-detail-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="task-detail-modal" style={modalStyle} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">{isEditing ? 'Edit Task' : task.title}</h2>
           <div className="header-actions">
@@ -185,23 +191,6 @@ function TaskDetailModal({ isOpen, onClose, task, onTaskUpdated }: TaskDetailMod
           )}
 
           <div className="detail-section">
-            <h3 className="section-title">Title</h3>
-            {isEditing ? (
-              <input
-                type="text"
-                name="title"
-                value={formData.title}
-                onChange={handleInputChange}
-                className="form-input"
-                placeholder="Task title"
-              />
-            ) : (
-              <p className="section-content">{task.title}</p>
-            )}
-          </div>
-
-          <div className="detail-section">
-            <h3 className="section-title">Description</h3>
             {isEditing ? (
               <textarea
                 name="description"
@@ -212,75 +201,11 @@ function TaskDetailModal({ isOpen, onClose, task, onTaskUpdated }: TaskDetailMod
                 rows={3}
               />
             ) : (
-              <p className="section-content">{task.description || 'No description provided'}</p>
+              <p className="section-content">{task.description || 'No description'}</p>
             )}
           </div>
 
-          <div className="detail-section">
-            <h3 className="section-title">Status</h3>
-            {isEditing ? (
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleInputChange}
-                className="form-select"
-              >
-                <option value="Todo">Todo</option>
-                <option value="InProgress">In Progress</option>
-                <option value="Done">Done</option>
-              </select>
-            ) : (
-              <div className="status-badge" style={{ 
-                backgroundColor: getStatusColor(task.status) + '20',
-                color: getStatusColor(task.status)
-              }}>
-                {task.status}
-              </div>
-            )}
-          </div>
-
-          <div className="detail-section">
-            <h3 className="section-title">Priority</h3>
-            {isEditing ? (
-              <select
-                name="priority"
-                value={formData.priority}
-                onChange={handleInputChange}
-                className="form-select"
-              >
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-              </select>
-            ) : (
-              <div className="priority-badge" style={{ 
-                backgroundColor: getPriorityColor(task.priority) + '20',
-                color: getPriorityColor(task.priority)
-              }}>
-                {task.priority}
-              </div>
-            )}
-          </div>
-
-          {task.assignee_name && (
-            <div className="detail-section">
-              <h3 className="section-title">Assignee</h3>
-              <div className="assignee-info">
-                <span className="assignee-avatar">👤</span>
-                <span className="assignee-name">{task.assignee_name}</span>
-              </div>
-            </div>
-          )}
-
-          {task.project_name && (
-            <div className="detail-section">
-              <h3 className="section-title">Project</h3>
-              <p className="section-content">📁 {task.project_name}</p>
-            </div>
-          )}
-
-          <div className="detail-section">
-            <h3 className="section-title">Due Date</h3>
+          <div className="detail-section inline-group">
             {isEditing ? (
               <input
                 type="date"
@@ -288,24 +213,79 @@ function TaskDetailModal({ isOpen, onClose, task, onTaskUpdated }: TaskDetailMod
                 value={formData.due_date}
                 onChange={handleInputChange}
                 className="form-input"
+                style={{ width: 'auto', flex: 1, minWidth: '150px' }}
               />
             ) : dueDateInfo ? (
               <p className="section-content" style={{ color: dueDateInfo.color }}>
-                {dueDateInfo.text}
+                🏁 {dueDateInfo.text}
               </p>
             ) : (
-              <p className="section-content">No due date set</p>
+              <p className="section-content">🏁 No due date</p>
             )}
           </div>
 
-          <div className="detail-section">
-            <h3 className="section-title">Created</h3>
-            <p className="section-content">{formatDate(task.created_at)}</p>
+          <div className="detail-section inline-group">
+            {isEditing ? (
+              <>
+                <select
+                  name="priority"
+                  value={formData.priority}
+                  onChange={handleInputChange}
+                  className="form-select"
+                  style={{ width: 'auto', flex: 'none' }}
+                >
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                </select>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleInputChange}
+                  className="form-select"
+                  style={{ width: 'auto', flex: 'none' }}
+                >
+                  <option value="Todo">Todo</option>
+                  <option value="InProgress">In Progress</option>
+                  <option value="Done">Done</option>
+                </select>
+              </>
+            ) : (
+              <>
+                <div className="priority-badge" style={{ 
+                  backgroundColor: getPriorityColor(task.priority) + '20',
+                  color: getPriorityColor(task.priority)
+                }}>
+                  {task.priority}
+                </div>
+                <div className="status-badge" style={{ 
+                  backgroundColor: getStatusColor(task.status) + '20',
+                  color: getStatusColor(task.status)
+                }}>
+                  {task.status === 'InProgress' ? 'In Progress' : task.status}
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="detail-section">
-            <h3 className="section-title">Last Updated</h3>
-            <p className="section-content">{formatDate(task.updated_at)}</p>
+          {(task.assignee_name || task.project_name) && (
+            <div className="detail-section inline-group">
+              {task.assignee_name && (
+                <div className="assignee-info">
+                  <span className="assignee-avatar">👤</span>
+                  <span className="assignee-name">{task.assignee_name}</span>
+                </div>
+              )}
+              {task.project_name && (
+                <p className="section-content">📁 {task.project_name}</p>
+              )}
+            </div>
+          )}
+
+          <div className="detail-section inline-group">
+            <p className="section-content" style={{ fontSize: '13px', color: '#8e8e93' }}>
+              Created {formatDate(task.created_at)} • Updated {formatDate(task.updated_at)}
+            </p>
           </div>
         </div>
       </div>

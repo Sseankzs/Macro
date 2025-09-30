@@ -169,9 +169,9 @@
 /* Task Card */
 .task-card {
   background: white;
-  border-radius: 6px;
+  border-radius: 10px;
   border: 1px solid #e5e5ea;
-  padding: 16px;
+  padding: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
@@ -199,40 +199,98 @@
 }
 
 .task-card.edit-mode {
-  transform: scale(0.95);
   opacity: 0.8;
-  animation: shake 0.5s ease-in-out infinite;
+  animation: wiggle 1.2s ease-in-out infinite;
 }
 
 .task-card.edit-mode:hover {
-  transform: scale(1);
   opacity: 1;
   animation: none;
 }
 
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
+@keyframes wiggle {
+  0%, 100% { transform: scale(0.95) translateX(0) translateY(0) rotate(0deg); }
+  25% { transform: scale(0.95) translateX(-1px) translateY(-1px) rotate(-0.5deg); }
+  50% { transform: scale(0.95) translateX(1px) translateY(1px) rotate(0.5deg); }
+  75% { transform: scale(0.95) translateX(-1px) translateY(1px) rotate(-0.3deg); }
 }
 
 .task-header {
   display: flex;
-  align-items: flex-start;
-  gap: 0px;
-  margin-bottom: 12px;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.task-priority-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .task-priority {
   display: inline-block;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-right: 8px;
+  text-transform: none;
+  letter-spacing: 0.3px;
   flex-shrink: 0;
+}
+
+.task-divider {
+  height: 1px;
+  background: #e5e5ea;
+  margin: 8px 0;
+}
+
+.task-due-date-section {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.task-due-date-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0.2px;
+  flex-shrink: 0;
+  background: rgba(142, 142, 147, 0.1);
+  color: #8e8e93;
+}
+
+.task-ellipsis-btn {
+  background: none;
+  border: none;
+  color: #8e8e93;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.task-ellipsis-btn:hover {
+  background: rgba(142, 142, 147, 0.1);
+  color: #1d1d1f;
+}
+
+.task-title-container {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .task-title {
@@ -254,9 +312,10 @@
   background: #ff3b30;
   color: white;
   border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: bold;
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: normal;
+  line-height: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -264,6 +323,9 @@
   box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
   transition: all 0.2s ease;
   z-index: 10;
+  /* Ensure perfect circle */
+  padding: 0;
+  text-align: center;
 }
 
 .delete-task-btn:hover {
@@ -274,7 +336,7 @@
 
 .task-description {
   color: #8e8e93;
-  margin: 0 0 12px 0;
+  margin: 0 0 10px 0;
   font-size: 14px;
   line-height: 1.4;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -284,7 +346,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .task-assignee {
@@ -310,40 +372,6 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-.task-project {
-  color: #8e8e93;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-.task-timestamps {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.timestamp-tag {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-.created-tag {
-  background: rgba(0, 122, 255, 0.1);
-  color: #007AFF;
-}
-
-.updated-tag {
-  background: rgba(142, 142, 147, 0.1);
-  color: #8e8e93;
-}
 
 /* Delete Confirmation Modal */
 .delete-confirm-overlay {

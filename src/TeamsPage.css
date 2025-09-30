@@ -45,59 +45,111 @@
   overflow: hidden;
 }
 
+/* Prevent delete button from appearing on main container */
+.teams-container::after,
+.teams-container::before,
+.main-content::after,
+.main-content::before,
+.content-area::after,
+.content-area::before,
+.teams-grid::after,
+.teams-grid::before {
+  display: none !important;
+}
+
+.teams-container > .delete-team-btn,
+.teams-container > .delete-member-btn,
+.main-content > .delete-team-btn,
+.main-content > .delete-member-btn,
+.content-area > .delete-team-btn,
+.content-area > .delete-member-btn,
+.teams-grid > .delete-team-btn,
+.teams-grid > .delete-member-btn {
+  display: none !important;
+}
+
+/* Ensure no delete buttons on main structural containers */
+.teams-container .delete-team-btn:first-child,
+.teams-container .delete-member-btn:first-child,
+.content-area > .delete-team-btn:not(.category-section .delete-team-btn),
+.content-area > .delete-member-btn:not(.team-member-card .delete-member-btn) {
+  display: none !important;
+}
+
+/* Hide delete button on the teams-grid container itself if it appears */
+.teams-grid > .delete-team-btn:first-of-type,
+.teams-grid > .delete-member-btn:first-of-type {
+  display: none !important;
+}
+
+/* Hide any stray delete buttons */
+button.delete-team-btn:not(.category-title button),
+button.delete-member-btn:not(.member-header button) {
+  display: none !important;
+}
+
 .teams-header {
-  padding: 1.5rem 2rem;
+  padding: 1.5rem 2rem 0 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-shrink: 0;
+  background: white;
 }
 
 .teams-header h1 {
+  color: #1d1d1f;
   margin: 0;
-  font-size: 1.875rem;
-  font-weight: 400;
-  color: #1a202c;
-  display: flex;
-  align-items: flex-end;
-  height: 2.5rem;
+  font-size: 24px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .header-actions {
   display: flex;
-  gap: 1rem;
+  gap: 12px;
+  align-items: center;
 }
 
 .btn-primary {
-  background: #000000;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
+  background: none !important;
+  border: none !important;
+  color: #007AFF !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
   cursor: pointer;
   transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  padding: 8px 0 !important;
+  text-decoration: none;
+  border-radius: 0 !important;
 }
 
-.btn-primary:hover {
-  background: #333333;
-  transform: translateY(-1px);
+.btn-primary:hover:not(:disabled) {
+  color: #0056CC !important;
+  text-decoration: underline;
+  background: none !important;
+  transform: none !important;
 }
 
 .btn-secondary {
-  background: #f8f9fa;
-  color: #495057;
-  border: 2px solid #e2e8f0;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
+  background: none !important;
+  border: none !important;
+  color: #007AFF !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
   cursor: pointer;
   transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  padding: 8px 0 !important;
+  text-decoration: none;
+  border-radius: 0 !important;
 }
 
-.btn-secondary:hover {
-  background: #e9ecef;
-  transform: translateY(-1px);
+.btn-secondary:hover:not(:disabled) {
+  color: #0056CC !important;
+  text-decoration: underline;
+  background: none !important;
+  transform: none !important;
 }
 
 /* Content Area */
@@ -155,14 +207,10 @@
 }
 
 .category-count {
-  background: #f8f9fa;
-  color: #495057;
-  padding: 0 0.5rem;
-  border-radius: 12px;
-  font-size: 1.125rem;
+  color: #8e8e93;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 1.4;
-  border: 2px solid #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .category-column {
@@ -219,7 +267,7 @@
 .team-member-card {
   background: white;
   border-radius: 12px;
-  padding: 1.25rem;
+  padding: 0.75rem;
   cursor: grab;
   transition: all 0.2s ease;
   border: 2px solid #e2e8f0;
@@ -256,7 +304,7 @@
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .member-avatar {
@@ -268,10 +316,19 @@
   justify-content: center;
   background: rgba(0, 0, 0, 0.05);
   border-radius: 12px;
+  /* Ensure perfect square for consistent rendering */
+  min-width: 50px;
+  min-height: 50px;
+  flex-shrink: 0;
 }
 
 .avatar-emoji {
   font-size: 1.5rem;
+  /* Ensure consistent emoji rendering */
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .status-indicator {
@@ -461,21 +518,24 @@
 }
 
 .empty-state-content .btn-primary {
-  background: #007AFF;
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 14px 24px;
-  font-size: 16px;
-  font-weight: 500;
+  background: none !important;
+  border: none !important;
+  color: #007AFF !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  padding: 8px 0 !important;
+  text-decoration: none;
+  border-radius: 0 !important;
 }
 
-.empty-state-content .btn-primary:hover {
-  background: #0056CC;
-  transform: translateY(-1px);
+.empty-state-content .btn-primary:hover:not(:disabled) {
+  color: #0056CC !important;
+  text-decoration: underline;
+  background: none !important;
+  transform: none !important;
 }
 
 @media (max-width: 768px) {
@@ -494,51 +554,55 @@
 
 /* iOS Homescreen-Style Edit Mode */
 .btn-edit {
-  background: #007AFF;
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 12px 20px;
-  font-size: 16px;
-  font-weight: 500;
+  background: none !important;
+  border: none !important;
+  color: #007AFF !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  padding: 8px 0 !important;
+  text-decoration: none;
+  border-radius: 0 !important;
 }
 
-.btn-edit:hover {
-  background: #0056CC;
-  transform: translateY(-1px);
+.btn-edit:hover:not(:disabled) {
+  color: #0056CC !important;
+  text-decoration: underline;
+  background: none !important;
+  transform: none !important;
 }
 
 .btn-done {
-  background: #34c759;
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 12px 20px;
-  font-size: 16px;
-  font-weight: 500;
+  background: none !important;
+  border: none !important;
+  color: #007AFF !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  padding: 8px 0 !important;
+  text-decoration: none;
+  border-radius: 0 !important;
 }
 
-.btn-done:hover {
-  background: #28a745;
-  transform: translateY(-1px);
+.btn-done:hover:not(:disabled) {
+  color: #0056CC !important;
+  text-decoration: underline;
+  background: none !important;
+  transform: none !important;
 }
 
 /* Edit Mode Styles */
 .team-member-card.edit-mode {
   position: relative;
-  transform: scale(0.95);
   opacity: 0.8;
   transition: all 0.3s ease;
 }
 
 .team-member-card.edit-mode:hover {
-  transform: scale(1);
   opacity: 1;
 }
 
@@ -551,9 +615,10 @@
   background: #ff3b30;
   color: white;
   border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: bold;
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: normal;
+  line-height: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -561,6 +626,9 @@
   box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
   transition: all 0.2s ease;
   z-index: 10;
+  /* Ensure perfect circle */
+  padding: 0;
+  text-align: center;
 }
 
 .delete-member-btn:hover {
@@ -582,9 +650,10 @@
   background: #ff3b30;
   color: white;
   border: none;
-  border-radius: 14px;
-  font-size: 18px;
-  font-weight: bold;
+  border-radius: 50%;
+  font-size: 20px;
+  font-weight: normal;
+  line-height: 28px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -592,6 +661,9 @@
   box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
   transition: all 0.2s ease;
   z-index: 10;
+  /* Ensure perfect circle */
+  padding: 0;
+  text-align: center;
 }
 
 .delete-team-btn:hover {
@@ -613,15 +685,16 @@
   pointer-events: auto;
 }
 
-/* iOS-style shake animation for edit mode */
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
+/* Wiggly animation for edit mode */
+@keyframes wiggle {
+  0%, 100% { transform: scale(0.95) translateX(0) translateY(0) rotate(0deg); }
+  25% { transform: scale(0.95) translateX(-1px) translateY(-1px) rotate(-0.5deg); }
+  50% { transform: scale(0.95) translateX(1px) translateY(1px) rotate(0.5deg); }
+  75% { transform: scale(0.95) translateX(-1px) translateY(1px) rotate(-0.3deg); }
 }
 
 .team-member-card.edit-mode {
-  animation: shake 0.5s ease-in-out infinite;
+  animation: wiggle 1.2s ease-in-out infinite;
 }
 
 .team-member-card.edit-mode:hover {
@@ -665,7 +738,7 @@
   
   .btn-edit,
   .btn-done {
-    padding: 10px 16px;
+    padding: 8px 0;
     font-size: 14px;
   }
 }

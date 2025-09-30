@@ -152,45 +152,52 @@
 .form-actions {
   display: flex;
   gap: 12px;
-  justify-content: flex-end;
+  justify-content: flex-start;
   margin-top: 8px;
-  padding-top: 24px;
-  border-top: 1px solid #f0f0f0;
+  padding-top: 0 !important;
+  border-top: none !important;
 }
 
 .cancel-button {
-  background: #f2f2f7;
-  color: #007AFF;
-  border: none;
-  border-radius: 12px;
-  padding: 14px 24px;
-  font-size: 16px;
-  font-weight: 500;
+  background: none !important;
+  border: none !important;
+  color: #007AFF !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  padding: 8px 0 !important;
+  text-decoration: none;
+  border-radius: 0 !important;
 }
 
 .cancel-button:hover:not(:disabled) {
-  background: #e5e5ea;
+  color: #0056CC !important;
+  text-decoration: underline;
+  background: none !important;
+  transform: none !important;
 }
 
 .submit-button {
-  background: #007AFF;
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 14px 24px;
-  font-size: 16px;
-  font-weight: 500;
+  background: none !important;
+  border: none !important;
+  color: #007AFF !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  padding: 8px 0 !important;
+  text-decoration: none;
+  border-radius: 0 !important;
 }
 
 .submit-button:hover:not(:disabled) {
-  background: #0056CC;
-  transform: translateY(-1px);
+  color: #0056CC !important;
+  text-decoration: underline;
+  background: none !important;
+  transform: none !important;
 }
 
 .submit-button:disabled,
@@ -200,46 +207,6 @@
   transform: none;
 }
 
-.debug-info {
-  margin-top: 24px;
-  padding: 16px;
-  background: #f2f2f7;
-  border-radius: 12px;
-  border: 1px solid #e5e5ea;
-}
-
-.debug-info h3 {
-  margin: 0 0 12px 0;
-  color: #1d1d1f;
-  font-size: 14px;
-  font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-.debug-section {
-  margin-bottom: 12px;
-}
-
-.debug-section strong {
-  display: block;
-  margin-bottom: 6px;
-  color: #1d1d1f;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-.debug-section pre {
-  background: white;
-  border: 1px solid #d1d1d6;
-  border-radius: 8px;
-  padding: 12px;
-  font-size: 11px;
-  color: #1d1d1f;
-  overflow-x: auto;
-  margin: 0;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-}
 
 /* Responsive design */
 @media (max-width: 768px) {

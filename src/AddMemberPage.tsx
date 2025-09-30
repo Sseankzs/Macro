@@ -167,7 +167,7 @@ function AddMemberModal({ isOpen, onClose, onMemberAdded }: AddMemberModalProps)
     <div className="add-member-overlay" onClick={onClose}>
       <div className="add-member-modal" onClick={(e) => e.stopPropagation()}>
         <div className="add-member-header">
-          <h2>Add New Team Member</h2>
+          <h2>New Member</h2>
           <button className="close-button" onClick={onClose}>
             ×
           </button>
@@ -234,9 +234,6 @@ function AddMemberModal({ isOpen, onClose, onMemberAdded }: AddMemberModalProps)
                 </option>
               ))}
             </select>
-            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-              Debug: Selected team ID = "{formData.teamId}" | Available teams: {availableTeams.length}
-            </div>
             <small>
               {availableTeams.length > 0 
                 ? `Select a team from ${availableTeams.length} available team(s)`
@@ -276,17 +273,6 @@ function AddMemberModal({ isOpen, onClose, onMemberAdded }: AddMemberModalProps)
           </div>
         </form>
 
-        <div className="debug-info">
-          <h3>Debug Information</h3>
-          <div className="debug-section">
-            <strong>Available Teams:</strong>
-            <pre>{JSON.stringify(availableTeams, null, 2)}</pre>
-          </div>
-          <div className="debug-section">
-            <strong>Form Data:</strong>
-            <pre>{JSON.stringify(formData, null, 2)}</pre>
-          </div>
-        </div>
       </div>
     </div>
   );

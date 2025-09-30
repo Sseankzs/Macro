@@ -62,6 +62,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [clickPosition, setClickPosition] = useState<{ x: number; y: number } | undefined>();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{type: 'task', id: string, title: string} | null>(null);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
@@ -215,6 +216,15 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     return { text: date.toLocaleDateString(), color: '#8e8e93' };
   };
 
+  // Format due date for tag (short month format)
+  const formatDueDateTag = (dueDate?: string) => {
+    if (!dueDate) return null;
+    const date = new Date(dueDate);
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    return `${month} ${day}`;
+  };
+
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     setDraggedTask(taskId);
@@ -308,23 +318,11 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     }
   };
 
-  // Format date for tags
-  const formatDateForTag = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
 
   // Task Card Component
   const TaskCard = ({ task }: { task: Task }) => {
     const dueDateInfo = formatDueDate(task.due_date);
+    const dueDateTag = formatDueDateTag(task.due_date);
     
     return (
       <div
@@ -332,25 +330,40 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         draggable={!editMode}
         onDragStart={editMode ? undefined : (e) => handleDragStart(e, task.id)}
         onDragEnd={editMode ? undefined : handleDragEnd}
-        onClick={() => handleTaskClick(task)}
       >
         <div className="task-header">
-          <span className="task-priority" style={{ 
-            backgroundColor: getPriorityColor(task.priority) + '20',
-            color: getPriorityColor(task.priority)
-          }}>
-            {task.priority}
-          </span>
-          <h4 className="task-title">{task.title}</h4>
-          {editMode && (
+          <div className="task-priority-container">
+            <span className="task-priority" style={{ 
+              backgroundColor: getPriorityColor(task.priority) + '20',
+              color: getPriorityColor(task.priority)
+            }}>
+              {task.priority}
+            </span>
             <button 
-              className="delete-task-btn"
-              onClick={() => handleDeleteTask(task.id, task.title)}
-              title={`Delete ${task.title}`}
+              className="task-ellipsis-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                setClickPosition({ x: rect.left, y: rect.bottom + 5 });
+                handleTaskClick(task);
+              }}
+              title="View task details"
             >
-              ×
+              ⋯
             </button>
-          )}
+          </div>
+          <div className="task-title-container">
+            <h4 className="task-title">{task.title}</h4>
+            {editMode && (
+              <button 
+                className="delete-task-btn"
+                onClick={() => handleDeleteTask(task.id, task.title)}
+                title={`Delete ${task.title}`}
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
         
         {task.description && (
@@ -372,20 +385,16 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
           )}
         </div>
         
-        {task.project_name && (
-          <div className="task-project">
-            📁 {task.project_name}
-          </div>
+        {dueDateTag && (
+          <>
+            <div className="task-divider"></div>
+            <div className="task-due-date-section">
+              <span className="task-due-date-tag">
+                🏁 {dueDateTag}
+              </span>
+            </div>
+          </>
         )}
-
-        <div className="task-timestamps">
-          <span className="timestamp-tag created-tag">
-            Created {formatDateForTag(task.created_at)}
-          </span>
-          <span className="timestamp-tag updated-tag">
-            Updated {formatDateForTag(task.updated_at)}
-          </span>
-        </div>
       </div>
     );
   };
@@ -511,6 +520,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         isOpen={showTaskDetailModal}
         onClose={() => setShowTaskDetailModal(false)}
         task={selectedTask}
+        clickPosition={clickPosition}
         onTaskUpdated={() => {
           // Reload tasks to reflect changes
           loadAllData();

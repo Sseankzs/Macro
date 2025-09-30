@@ -483,15 +483,6 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
                           <h3 className="category-title-text">{team.team_name}</h3>
                           <span className="category-count">{getMembersByTeam(team.id).length}</span>
                         </div>
-                        {editMode && (
-                          <button 
-                            className="delete-team-btn"
-                            onClick={() => handleDeleteTeam(team.id, team.team_name)}
-                            title={`Delete ${team.team_name} team`}
-                          >
-                            ×
-                          </button>
-                        )}
                       </div>
                       <TeamColumn team={team} />
                     </div>
