@@ -95,6 +95,54 @@ function App() {
     setCurrentPage(page)
   }
 
+  // Keyboard shortcuts for navigation - works across all pages
+  useEffect(() => {
+    if (!isLoggedIn) return; // Only enable shortcuts when logged in
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only trigger shortcuts when Ctrl/Cmd is pressed
+      if (!event.ctrlKey && !event.metaKey) return;
+      
+      // Prevent default browser behavior for our shortcuts
+      event.preventDefault();
+      
+      switch (event.key.toLowerCase()) {
+        case 'h':
+          handlePageChange('dashboard');
+          break;
+        case 't':
+          handlePageChange('tasks');
+          break;
+        case 'e':
+          handlePageChange('teams');
+          break;
+        case 'a':
+          handlePageChange('register-apps');
+          break;
+        case 'l':
+          handlePageChange('logs');
+          break;
+        case 'i':
+          handlePageChange('ai-assistant');
+          break;
+        case 'f':
+          // Focus search or filter functionality (could be enhanced later)
+          console.log('Search/Filter shortcut triggered');
+          break;
+        default:
+          return; // Don't prevent default for other keys
+      }
+    };
+
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isLoggedIn, handlePageChange]);
+
   // Show dashboard if logged in
   if (isLoggedIn) {
     return (

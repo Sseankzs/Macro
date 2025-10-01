@@ -1,9 +1,5 @@
 /* Monthly Calendar Styles */
 
-.monthly-calendar {
-  /* Removed container styling to reduce space usage */
-}
-
 /* Calendar Header */
 .calendar-header {
   display: flex;
@@ -16,7 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100px;
+  width: 130px;
   height: 32px;
   background: #f8f9fa;
   border: 1px solid #dee2e6;
@@ -42,6 +38,21 @@
   color: #8e8e93;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.nav-hotkey {
+  font-size: 0.75rem;
+  background: rgba(142, 142, 147, 0.2);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-weight: 400;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.nav-button:hover .nav-hotkey {
+  opacity: 1;
 }
 
 .nav-button:hover {

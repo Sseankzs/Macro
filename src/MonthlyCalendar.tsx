@@ -30,6 +30,40 @@ const MonthlyCalendar: React.FC<MonthlyCalendarProps> = ({
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [dayData, setDayData] = useState<DayData[]>([]);
 
+  // Calendar navigation hotkeys
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only trigger when not holding Ctrl/Cmd (to avoid conflicts with other shortcuts)
+      if (event.ctrlKey || event.metaKey) return;
+      
+      // Only trigger for arrow keys
+      switch (event.key) {
+        case 'ArrowLeft':
+          event.preventDefault();
+          goToPreviousMonth();
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          goToNextMonth();
+          break;
+        case 'Escape':
+          event.preventDefault();
+          closePieChart();
+          break;
+        default:
+          return;
+      }
+    };
+
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentDate]);
+
   // Generate calendar data for the current month
   useEffect(() => {
     const generateCalendarData = () => {
@@ -226,11 +260,9 @@ const MonthlyCalendar: React.FC<MonthlyCalendarProps> = ({
     <div className="monthly-calendar">
       {/* Calendar Header */}
       <div className="calendar-header">
-        <button className="nav-button" onClick={goToPreviousMonth}>
+        <button className="nav-button" onClick={goToPreviousMonth} title="Press ← for Previous Month">
           <div className="nav-button-content">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15,18 9,12 15,6"></polyline>
-            </svg>
+            <span className="nav-hotkey">←</span>
             <span className="nav-month-indicator">
               {monthNames[(currentDate.getMonth() - 1 + 12) % 12]}
             </span>
@@ -241,14 +273,12 @@ const MonthlyCalendar: React.FC<MonthlyCalendarProps> = ({
           {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
         </h2>
         
-        <button className="nav-button" onClick={goToNextMonth}>
+        <button className="nav-button" onClick={goToNextMonth} title="Press → for Next Month">
           <div className="nav-button-content">
             <span className="nav-month-indicator">
               {monthNames[(currentDate.getMonth() + 1) % 12]}
             </span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="9,18 15,12 9,6"></polyline>
-            </svg>
+            <span className="nav-hotkey">→</span>
           </div>
         </button>
       </div>

@@ -22,6 +22,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'dashboard' as const,
       label: 'Home',
+      shortcut: 'Ctrl+H',
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
@@ -32,6 +33,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'tasks' as const,
       label: 'Tasks',
+      shortcut: 'Ctrl+T',
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M9 11l3 3l8-8"/>
@@ -42,6 +44,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'teams' as const,
       label: 'Teams',
+      shortcut: 'Ctrl+E',
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -54,6 +57,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'register-apps' as const,
       label: 'Apps',
+      shortcut: 'Ctrl+A',
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
@@ -65,6 +69,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'logs' as const,
       label: 'Logs',
+      shortcut: 'Ctrl+L',
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -78,6 +83,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'ai-assistant' as const,
       label: 'AI Assistant',
+      shortcut: 'Ctrl+I',
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M12 2L2 7l10 5 10-5-10-5z"/>
@@ -108,7 +114,8 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
                   }}
                 >
                   {item.icon}
-                  {item.label}
+                  <span className="nav-label">{item.label}</span>
+                  <span className="nav-shortcut">{item.shortcut}</span>
                 </a>
               </li>
             ))}

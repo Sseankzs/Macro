@@ -80,6 +80,41 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Time filter hotkeys - only work when on dashboard
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only trigger when not holding Ctrl/Cmd (to avoid conflicts with navigation shortcuts)
+      if (event.ctrlKey || event.metaKey) return;
+      
+      // Only trigger for number keys 1, 2, 3
+      switch (event.key) {
+        case '1':
+          event.preventDefault();
+          handleTimePeriodChange('today');
+          break;
+        case '2':
+          event.preventDefault();
+          handleTimePeriodChange('week');
+          break;
+        case '3':
+          event.preventDefault();
+          handleTimePeriodChange('month');
+          break;
+        default:
+          return;
+      }
+    };
+
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedTimePeriod]);
+
+
   // Function to find the most used app for the past week
   const findMostUsedApp = (timeEntries: TimeEntry[], apps: Application[]): AppTimeData | null => {
     console.log('🏆 Finding most used app for past week...');
@@ -305,6 +340,22 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     } else {
       const minutes = Math.round(hours * 60);
       return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+    }
+  };
+
+  // Helper function to format time with short units
+  const formatTimeWithShortUnits = (hours: number): string => {
+    if (hours >= 1) {
+      const wholeHours = Math.floor(hours);
+      const minutes = Math.round((hours % 1) * 60);
+      if (minutes > 0) {
+        return `${wholeHours}hr ${minutes}min`;
+      } else {
+        return `${wholeHours}hr`;
+      }
+    } else {
+      const minutes = Math.round(hours * 60);
+      return `${minutes}min`;
     }
   };
 
@@ -692,8 +743,8 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                   </div>
                   <div className="stat-main">
                     <>
-                      <span className="stat-number">
-                        {formatTimeWithFullWords(hoursTrackedToday)}
+                      <span className="stat-number stat-number-small">
+                        {formatTimeWithShortUnits(hoursTrackedToday)}
                       </span>
                       <span className={`stat-change ${hoursTrackedToday >= hoursTrackedYesterday ? 'positive' : 'negative'}`}>
                         {hoursTrackedToday >= hoursTrackedYesterday ? '+' : ''}{(hoursTrackedToday - hoursTrackedYesterday).toFixed(1)} hours
@@ -756,20 +807,23 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                   <button 
                     className={`chart-btn ${selectedTimePeriod === 'today' ? 'active' : ''}`}
                     onClick={() => handleTimePeriodChange('today')}
+                    title="Press 1 for Today"
                   >
-                    Today
+                    Today <span className="hotkey">1</span>
                   </button>
                   <button 
                     className={`chart-btn ${selectedTimePeriod === 'week' ? 'active' : ''}`}
                     onClick={() => handleTimePeriodChange('week')}
+                    title="Press 2 for Week"
                   >
-                    Week
+                    Week <span className="hotkey">2</span>
                   </button>
                   <button 
                     className={`chart-btn ${selectedTimePeriod === 'month' ? 'active' : ''}`}
                     onClick={() => handleTimePeriodChange('month')}
+                    title="Press 3 for Month"
                   >
-                    Month
+                    Month <span className="hotkey">3</span>
                   </button>
                 </div>
               </div>
@@ -798,7 +852,20 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                   <div className="chart-header">
                     <h3>Daily Time Distribution</h3>
                   </div>
-                      <div className="nivo-container">
+                      <div className="nivo-container" ref={(el) => {
+                        if (el) {
+                          // Add custom animation after chart renders
+                          setTimeout(() => {
+                            const bars = el.querySelectorAll('svg g[data-testid="bar"] rect');
+                            bars.forEach((bar, index) => {
+                              (bar as HTMLElement).style.transformOrigin = 'bottom';
+                              (bar as HTMLElement).style.animation = `growFromBottom 1.2s ease-out forwards`;
+                              (bar as HTMLElement).style.animationDelay = `${index * 0.1}s`;
+                              (bar as HTMLElement).style.opacity = '0';
+                            });
+                          }, 100);
+                        }
+                      }}>
                         <ResponsiveBar
                           key={`bar-${windowWidth}`}
                           data={dailyTimeData}
@@ -832,8 +899,10 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                           labelSkipWidth={windowWidth > 768 ? 12 : 8}
                           labelSkipHeight={windowWidth > 768 ? 12 : 8}
                           labelTextColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
-                          animate={true}
+                          animate={false}
                           enableLabel={false}
+                          enableGridX={false}
+                          enableGridY={true}
                           tooltip={({ id, value, indexValue }) => (
                             <div style={{
                               background: 'rgba(0, 0, 0, 0.8)',

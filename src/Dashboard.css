@@ -65,7 +65,7 @@ html, body {
 
 /* Sidebar */
 .sidebar {
-  width: 250px;
+  width: 280px;
   background: #f5f5f5;
   color: #495057;
   display: flex;
@@ -167,13 +167,34 @@ html, body {
 .nav-link {
   display: flex;
   align-items: center;
-  padding: 0.4rem 0.75rem;
-  color: #6c757d;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: #495057;
   text-decoration: none;
+  border-radius: 12px;
   transition: all 0.2s ease;
-  border-radius: 8px;
-  border: none;
   font-size: var(--font-base);
+  font-weight: 500;
+}
+
+.nav-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-shortcut {
+  font-size: var(--font-xs);
+  color: #6c757d;
+  background: rgba(108, 117, 125, 0.1);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-weight: 400;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
 }
 
 .nav-link:hover {
@@ -181,10 +202,21 @@ html, body {
   color: #495057;
 }
 
+.nav-link:hover .nav-shortcut {
+  opacity: 1;
+  background: rgba(108, 117, 125, 0.2);
+}
+
 .nav-item.active .nav-link {
   background: white;
   color: #495057;
   border: 1px solid #dee2e6;
+}
+
+.nav-item.active .nav-link .nav-shortcut {
+  opacity: 1;
+  background: rgba(73, 80, 87, 0.15);
+  color: #495057;
 }
 
 .nav-icon {
@@ -201,7 +233,7 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 1rem 0.5rem 1rem 0;
+  padding: 1rem 1rem 1rem 0;
 }
 
 /* Dashboard Page Container - White container with rounded edges */
@@ -258,7 +290,7 @@ html, body {
 /* Content Area */
 .content-area {
   flex: 1;
-  padding: 1.5rem;
+  padding: 2rem;
   overflow-y: auto;
 }
 
@@ -333,6 +365,13 @@ html, body {
 .stat-number {
   font-size: var(--stat-number-size);
   font-weight: 700;
+  color: #495057;
+  line-height: 1;
+}
+
+.stat-number-small {
+  font-size: var(--font-xl);
+  font-weight: 600;
   color: #495057;
   line-height: 1;
 }
@@ -584,8 +623,8 @@ html, body {
 
 .charts-grid {
   display: grid;
-  grid-template-columns: 3fr 2fr;
-  gap: 1.5rem;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
   align-items: stretch;
 }
 
@@ -767,6 +806,9 @@ html, body {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .chart-btn.active {
@@ -776,6 +818,27 @@ html, body {
 
 .chart-btn:hover:not(.active) {
   background: rgba(0, 0, 0, 0.1);
+}
+
+.chart-btn .hotkey {
+  font-size: var(--font-xs);
+  background: rgba(142, 142, 147, 0.2);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-weight: 400;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.chart-btn.active .hotkey {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  opacity: 1;
+}
+
+.chart-btn:hover .hotkey {
+  opacity: 1;
 }
 
 /* Nivo Container */
@@ -988,8 +1051,8 @@ html, body {
 /* Responsive Design */
 @media (max-width: 1400px) {
   .charts-grid {
-    grid-template-columns: 2fr 1fr;
-    gap: 1.25rem;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 1.5rem;
   }
 }
 
@@ -1034,7 +1097,7 @@ html, body {
 
 @media (max-width: 768px) {
   .sidebar {
-    width: 200px;
+    width: 220px;
   }
   
   .main-header {
@@ -1144,5 +1207,21 @@ html, body {
     background: white;
     color: #495057;
     border: 2px solid #e2e8f0;
+  }
+}
+
+/* Custom Bar Chart Animation - Bottom Up Growth */
+
+@keyframes growFromBottom {
+  0% {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 1;
   }
 }
