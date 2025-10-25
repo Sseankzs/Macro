@@ -75,6 +75,9 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationTimeData, setApplicationTimeData] = useState<AppTimeData[]>([]);
   const [mostUsedApp, setMostUsedApp] = useState<AppTimeData | null>(null);
+  const [categoryData, setCategoryData] = useState<Array<{id: string, label: string, value: number, hours: number}>>([]);
+  const [dailyTimeData, setDailyTimeData] = useState<Array<{[key: string]: number | string}>>([]);
+  const [chartCategories, setChartCategories] = useState<string[]>([]);
   
   // Main dashboard loading state
   const [loading, setLoading] = useState<boolean>(true);
@@ -310,24 +313,225 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     return topApps;
   };
 
-  // Data for Nivo Bar Chart (Daily Time Distribution)
-  const dailyTimeData = [
-    { day: 'Mon', development: 4.2, communication: 2.1, research: 0, design: 0, meetings: 0 },
-    { day: 'Tue', development: 5.3, communication: 0, research: 3.2, design: 0, meetings: 0 },
-    { day: 'Wed', development: 3.1, communication: 1.6, research: 0, design: 0, meetings: 0 },
-    { day: 'Thu', development: 4.8, communication: 0, research: 0, design: 2.7, meetings: 0 },
-    { day: 'Fri', development: 6.4, communication: 0, research: 0, design: 0, meetings: 3.2 },
-    { day: 'Sat', development: 3.7, communication: 2.1, research: 0, design: 0, meetings: 0 },
-    { day: 'Sun', development: 5.3, communication: 0, research: 2.7, design: 0, meetings: 0 }
-  ];
+  // Aggregate time by category for pie chart
+  const aggregateTimeByCategory = (timeEntries: TimeEntry[], apps: Application[], timePeriod: 'today' | 'week' | 'month') => {
+    console.log('🥧 Aggregating time by category for period:', timePeriod);
+    
+    if (!timeEntries || timeEntries.length === 0 || !apps || apps.length === 0) {
+      console.log('🥧 No data available for category aggregation');
+      return [];
+    }
 
-  // Data for Nivo Pie Chart (App Category Breakdown)
-  const categoryData = [
-    { id: 'Coding', label: 'Coding', value: 45 },
-    { id: 'Communication', label: 'Communication', value: 25 },
-    { id: 'Research', label: 'Research', value: 20 },
-    { id: 'Other', label: 'Other', value: 10 }
-  ];
+    // Create a map of app_id to app category
+    const appCategoryMap = new Map<string, string>();
+    apps.forEach(app => {
+      appCategoryMap.set(app.id, app.category || 'Uncategorized');
+    });
+
+    // Filter entries based on time period (same logic as aggregateTimeByApplication)
+    const now = new Date();
+    let startDate: Date;
+    
+    switch (timePeriod) {
+      case 'today':
+        startDate = new Date(now);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case 'week':
+        startDate = new Date(now);
+        const dayOfWeek = now.getDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startDate.setDate(now.getDate() - daysToMonday);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+    }
+
+    const filteredEntries = timeEntries.filter(entry => {
+      const entryDate = new Date(entry.start_time);
+      return entryDate >= startDate && entry.app_id;
+    });
+
+    // Aggregate time by category
+    const categoryTimeMap = new Map<string, number>();
+    
+    filteredEntries.forEach(entry => {
+      if (entry.app_id) {
+        const category = appCategoryMap.get(entry.app_id) || 'Uncategorized';
+        const startTime = new Date(entry.start_time);
+        let endTime: Date;
+        
+        // Handle different end time scenarios
+        if (entry.end_time) {
+          endTime = new Date(entry.end_time);
+        } else if (entry.duration_seconds) {
+          endTime = new Date(startTime.getTime() + (entry.duration_seconds * 1000));
+        } else {
+          endTime = new Date();
+        }
+        
+        // Calculate duration in hours
+        const durationMs = Math.max(0, endTime.getTime() - startTime.getTime());
+        const durationHours = durationMs / (1000 * 60 * 60);
+        
+        if (durationHours > 0) {
+          const currentTime = categoryTimeMap.get(category) || 0;
+          categoryTimeMap.set(category, currentTime + durationHours);
+        }
+      }
+    });
+
+    // Convert to pie chart format and calculate percentages
+    const totalHours = Array.from(categoryTimeMap.values()).reduce((sum, hours) => sum + hours, 0);
+    
+    if (totalHours === 0) {
+      console.log('🥧 No category data available');
+      return [];
+    }
+
+    const result = Array.from(categoryTimeMap.entries())
+      .filter(([_, hours]) => hours >= 1/60) // At least 1 minute
+      .map(([category, hours]) => ({
+        id: category,
+        label: category,
+        value: Math.round((hours / totalHours) * 100), // Percentage
+        hours: hours
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    console.log('🥧 Category data:', result);
+    return result;
+  };
+
+  // Aggregate time by day and category for bar chart
+  const aggregateDailyTimeByCategory = (timeEntries: TimeEntry[], apps: Application[], timePeriod: 'today' | 'week' | 'month') => {
+    console.log('📊 Aggregating daily time by category for period:', timePeriod);
+    
+    if (!timeEntries || timeEntries.length === 0 || !apps || apps.length === 0) {
+      console.log('📊 No data available for daily aggregation');
+      return [];
+    }
+
+    // Create a map of app_id to app category
+    const appCategoryMap = new Map<string, string>();
+    apps.forEach(app => {
+      appCategoryMap.set(app.id, app.category || 'Uncategorized');
+    });
+
+    // Get unique categories for dynamic keys
+    const allCategories = Array.from(new Set(apps.map(app => app.category || 'Uncategorized')));
+    
+    // Determine the date range based on time period
+    const now = new Date();
+    let startDate: Date;
+    let days: string[] = [];
+    
+    switch (timePeriod) {
+      case 'today':
+        // Show hourly data for today
+        startDate = new Date(now);
+        startDate.setHours(0, 0, 0, 0);
+        for (let hour = 0; hour < 24; hour += 2) { // Every 2 hours
+          days.push(`${hour.toString().padStart(2, '0')}:00`);
+        }
+        break;
+      case 'week':
+        // Show daily data for this week
+        startDate = new Date(now);
+        const dayOfWeek = now.getDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startDate.setDate(now.getDate() - daysToMonday);
+        startDate.setHours(0, 0, 0, 0);
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        break;
+      case 'month':
+        // Show weekly data for this month (4 weeks)
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        days = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+        break;
+    }
+
+    // Initialize data structure
+    const dailyData: { [key: string]: { [category: string]: number } } = {};
+    days.forEach(day => {
+      dailyData[day] = {};
+      allCategories.forEach(category => {
+        dailyData[day][category] = 0;
+      });
+    });
+
+    // Filter and process entries
+    const filteredEntries = timeEntries.filter(entry => {
+      const entryDate = new Date(entry.start_time);
+      return entryDate >= startDate && entry.app_id;
+    });
+
+    filteredEntries.forEach(entry => {
+      if (entry.app_id) {
+        const category = appCategoryMap.get(entry.app_id) || 'Uncategorized';
+        const startTime = new Date(entry.start_time);
+        let endTime: Date;
+        
+        // Handle different end time scenarios
+        if (entry.end_time) {
+          endTime = new Date(entry.end_time);
+        } else if (entry.duration_seconds) {
+          endTime = new Date(startTime.getTime() + (entry.duration_seconds * 1000));
+        } else {
+          endTime = new Date();
+        }
+        
+        // Calculate duration in hours
+        const durationMs = Math.max(0, endTime.getTime() - startTime.getTime());
+        const durationHours = durationMs / (1000 * 60 * 60);
+        
+        if (durationHours > 0) {
+          let dayKey: string;
+          
+          switch (timePeriod) {
+            case 'today':
+              // Group by 2-hour intervals
+              const hour = startTime.getHours();
+              const interval = Math.floor(hour / 2) * 2;
+              dayKey = `${interval.toString().padStart(2, '0')}:00`;
+              break;
+            case 'week':
+              // Group by day of week
+              const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+              dayKey = dayNames[startTime.getDay()];
+              break;
+            case 'month':
+              // Group by week of month
+              const dayOfMonth = startTime.getDate();
+              const weekOfMonth = Math.ceil(dayOfMonth / 7);
+              dayKey = `Week ${Math.min(weekOfMonth, 4)}`; // Cap at week 4
+              break;
+            default:
+              dayKey = days[0];
+          }
+          
+          if (dailyData[dayKey] && category in dailyData[dayKey]) {
+            dailyData[dayKey][category] += durationHours;
+          }
+        }
+      }
+    });
+
+    // Convert to chart format
+    const result = days.map(day => {
+      const dayData: { [key: string]: number | string } = { day };
+      allCategories.forEach(category => {
+        dayData[category.toLowerCase().replace(/\s+/g, '_')] = Math.round((dailyData[day][category] || 0) * 100) / 100; // Round to 2 decimals
+      });
+      return dayData;
+    });
+
+    console.log('📊 Daily time data:', result);
+    console.log('📊 Categories found:', allCategories);
+    return { data: result, categories: allCategories.map(cat => cat.toLowerCase().replace(/\s+/g, '_')) };
+  };
 
   // Colors for the charts
   const colors = ['#5DADE2', '#48C9B0', '#52BE80', '#F4D03F', '#EB984E'];
@@ -571,6 +775,20 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
         console.log('🚀 Initial aggregation result:', aggregatedData);
         setApplicationTimeData(aggregatedData);
 
+        // Calculate category data for pie chart
+        const categoryChartData = aggregateTimeByCategory(timeEntries, applications, selectedTimePeriod);
+        setCategoryData(categoryChartData);
+
+        // Calculate daily time data for bar chart
+        const dailyTimeResult = aggregateDailyTimeByCategory(timeEntries, applications, selectedTimePeriod);
+        if (Array.isArray(dailyTimeResult)) {
+          setDailyTimeData([]);
+          setChartCategories([]);
+        } else {
+          setDailyTimeData(dailyTimeResult.data);
+          setChartCategories(dailyTimeResult.categories);
+        }
+
         // Calculate most used app for the past week
         const mostUsedAppData = findMostUsedApp(timeEntries, applications);
         setMostUsedApp(mostUsedAppData);
@@ -650,6 +868,20 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       console.log('📊 Aggregated data for', selectedTimePeriod, ':', aggregatedData);
       setApplicationTimeData(aggregatedData);
       
+      // Calculate category data for pie chart
+      const categoryChartData = aggregateTimeByCategory(cache.timeEntries, applications, selectedTimePeriod);
+      setCategoryData(categoryChartData);
+      
+      // Calculate daily time data for bar chart
+      const dailyTimeResult = aggregateDailyTimeByCategory(cache.timeEntries, applications, selectedTimePeriod);
+      if (Array.isArray(dailyTimeResult)) {
+        setDailyTimeData([]);
+        setChartCategories([]);
+      } else {
+        setDailyTimeData(dailyTimeResult.data);
+        setChartCategories(dailyTimeResult.categories);
+      }
+      
       // Update cache with the new aggregated data
       updateCache({
         applicationTimeData: aggregatedData
@@ -658,6 +890,9 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       // No real data available - show empty state
       console.log('� No real data available, setting empty array...');
       setApplicationTimeData([]);
+      setCategoryData([]);
+      setDailyTimeData([]);
+      setChartCategories([]);
     }
   }, [selectedTimePeriod, applications, cache.timeEntries, loading]);
 
@@ -837,136 +1072,166 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
               <div className="charts-grid">
                 {/* Left Column - Charts */}
                 <div className="charts-left-column">
-              {/* Monthly Calendar - Show for Month */}
-              {selectedTimePeriod === 'month' && (
-                <div className="chart-card ios-card">
-                  <div className="chart-header">
-                    <h3>Monthly Activity Calendar</h3>
-                  </div>
-                  <MonthlyCalendar 
-                    timeEntries={cache.timeEntries || []}
-                    applications={applications}
-                    maxHoursPerDay={12}
-                  />
-                </div>
-              )}
-              
-              {/* Daily Time Distribution Chart - Show for Week */}
-              {selectedTimePeriod === 'week' && (
-                <div className="chart-card ios-card">
-                  <div className="chart-header">
-                    <h3>Daily Time Distribution</h3>
-                  </div>
-                      <div className="nivo-container" ref={(el) => {
-                        if (el) {
-                          // Add custom animation after chart renders
-                          setTimeout(() => {
-                            const bars = el.querySelectorAll('svg g[data-testid="bar"] rect');
-                            bars.forEach((bar, index) => {
-                              (bar as HTMLElement).style.transformOrigin = 'bottom';
-                              (bar as HTMLElement).style.animation = `growFromBottom 1.2s ease-out forwards`;
-                              (bar as HTMLElement).style.animationDelay = `${index * 0.1}s`;
-                              (bar as HTMLElement).style.opacity = '0';
-                            });
-                          }, 100);
-                        }
-                      }}>
-                        <ResponsiveBar
-                          key={`bar-${windowWidth}`}
-                          data={dailyTimeData}
-                          keys={['development', 'communication', 'research', 'design', 'meetings']}
-                          indexBy="day"
-                          margin={windowWidth > 768 ? 
-                            { top: 20, right: 20, bottom: 40, left: 60 } : 
-                            { top: 20, right: 10, bottom: 30, left: 50 }
-                          }
-                          padding={windowWidth > 768 ? 0.2 : 0.1}
-                          colors={colors}
-                          borderColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
-                          axisTop={null}
-                          axisRight={null}
-                          axisBottom={{
-                            tickSize: windowWidth > 768 ? 5 : 3,
-                            tickPadding: windowWidth > 768 ? 5 : 3,
-                            tickRotation: windowWidth > 768 ? 0 : -45,
-                            legend: 'Day',
-                            legendPosition: 'middle',
-                            legendOffset: windowWidth > 768 ? 32 : 25,
-                          }}
-                          axisLeft={{
-                            tickSize: windowWidth > 768 ? 5 : 3,
-                            tickPadding: windowWidth > 768 ? 5 : 3,
-                            tickRotation: 0,
-                            legend: 'Hours',
-                            legendPosition: 'middle',
-                            legendOffset: windowWidth > 768 ? -50 : -40,
-                          }}
-                          labelSkipWidth={windowWidth > 768 ? 12 : 8}
-                          labelSkipHeight={windowWidth > 768 ? 12 : 8}
-                          labelTextColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
-                          animate={false}
-                          enableLabel={false}
-                          enableGridX={false}
-                          enableGridY={true}
-                          tooltip={({ id, value, indexValue }) => (
-                            <div style={{
-                              background: 'rgba(0, 0, 0, 0.8)',
-                              color: 'white',
-                              padding: '8px 12px',
-                              borderRadius: '8px',
-                              fontSize: '12px',
-                              border: 'none'
-                            }}>
-                              <strong>{indexValue}</strong><br />
-                              {id}: {value}h
-                        </div>
-                          )}
-                        />
-                  </div>
-                </div>
-              )}
-              
-              {/* App Category Breakdown Chart - Show for Today */}
-              {selectedTimePeriod === 'today' && (
+                  
+                  {/* Monthly Calendar - Show for Month view only */}
+                  {selectedTimePeriod === 'month' && (
                     <div className="chart-card ios-card">
-                  <div className="chart-header">
-                    <h3>App Category Breakdown</h3>
-                  </div>
-                      <div className="nivo-pie-container">
-                        <ResponsivePie
-                          key={`pie-${windowWidth}`}
-                          data={categoryData}
-                          margin={windowWidth > 768 ? 
-                            { top: 20, right: 120, bottom: 20, left: 20 } : 
-                            { top: 20, right: 20, bottom: 20, left: 20 }
-                          }
-                          innerRadius={windowWidth > 768 ? 0 : 0}
-                          padAngle={windowWidth > 768 ? 0.7 : 0.5}
-                          cornerRadius={windowWidth > 768 ? 3 : 2}
-                          colors={colors}
-                          borderWidth={1}
-                          borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
-                          arcLabelsSkipAngle={10}
-                          arcLabelsTextColor="#333333"
-                          animate={true}
-                          enableArcLabels={false}
-                          tooltip={({ datum }) => (
-                            <div style={{
-                              background: 'rgba(0, 0, 0, 0.8)',
-                              color: 'white',
-                              padding: '8px 12px',
-                              borderRadius: '8px',
-                              fontSize: '12px',
-                              border: 'none'
-                            }}>
-                              <strong>{datum.label}</strong><br />
-                              {datum.value}%
-                        </div>
-                          )}
-                        />
+                      <div className="chart-header">
+                        <h3>Monthly Activity Calendar</h3>
                       </div>
+                      <MonthlyCalendar 
+                        timeEntries={cache.timeEntries || []}
+                        applications={applications}
+                        maxHoursPerDay={12}
+                      />
                     </div>
                   )}
+                  
+                  {/* Daily Time Distribution Chart - Show for Week view only */}
+                  {selectedTimePeriod === 'week' && (
+                    <div className="chart-card ios-card">
+                      <div className="chart-header">
+                        <h3>Daily Distribution</h3>
+                        <span className="chart-period">{selectedTimePeriod}</span>
+                      </div>
+                      {loading ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">Loading daily data...</span>
+                        </div>
+                      ) : dailyTimeData.length === 0 || chartCategories.length === 0 ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">No daily data</span>
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                            Track some applications to see daily breakdown
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="nivo-container" ref={(el) => {
+                          if (el) {
+                            // Add custom animation after chart renders
+                            setTimeout(() => {
+                              const bars = el.querySelectorAll('svg g[data-testid="bar"] rect');
+                              bars.forEach((bar, index) => {
+                                (bar as HTMLElement).style.transformOrigin = 'bottom';
+                                (bar as HTMLElement).style.animation = `growFromBottom 1.2s ease-out forwards`;
+                                (bar as HTMLElement).style.animationDelay = `${index * 0.1}s`;
+                                (bar as HTMLElement).style.opacity = '0';
+                              });
+                            }, 100);
+                          }
+                        }}>
+                          <ResponsiveBar
+                            key={`bar-${windowWidth}-${selectedTimePeriod}`}
+                            data={dailyTimeData}
+                            keys={chartCategories.length > 0 ? chartCategories : ['uncategorized']}
+                            indexBy="day"
+                            margin={windowWidth > 768 ? 
+                              { top: 20, right: 20, bottom: 40, left: 60 } : 
+                              { top: 20, right: 10, bottom: 30, left: 50 }
+                            }
+                            padding={windowWidth > 768 ? 0.2 : 0.1}
+                            colors={colors}
+                            borderColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
+                            axisTop={null}
+                            axisRight={null}
+                            axisBottom={{
+                              tickSize: windowWidth > 768 ? 5 : 3,
+                              tickPadding: windowWidth > 768 ? 5 : 3,
+                              tickRotation: windowWidth > 768 ? 0 : -45,
+                              legend: 'Day',
+                              legendPosition: 'middle',
+                              legendOffset: windowWidth > 768 ? 32 : 25,
+                            }}
+                            axisLeft={{
+                              tickSize: windowWidth > 768 ? 5 : 3,
+                              tickPadding: windowWidth > 768 ? 5 : 3,
+                              tickRotation: 0,
+                              legend: 'Hours',
+                              legendPosition: 'middle',
+                              legendOffset: windowWidth > 768 ? -50 : -40,
+                            }}
+                            labelSkipWidth={windowWidth > 768 ? 12 : 8}
+                            labelSkipHeight={windowWidth > 768 ? 12 : 8}
+                            labelTextColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
+                            animate={false}
+                            enableLabel={false}
+                            enableGridX={false}
+                            enableGridY={true}
+                            tooltip={({ id, value, indexValue }) => (
+                              <div style={{
+                                background: 'rgba(0, 0, 0, 0.8)',
+                                color: 'white',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                border: 'none'
+                              }}>
+                                <strong>{indexValue}</strong><br />
+                                {String(id).replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: {value}h
+                              </div>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* App Category Breakdown Chart - Show for Today view only */}
+                  {selectedTimePeriod === 'today' && (
+                    <div className="chart-card ios-card">
+                      <div className="chart-header">
+                        <h3>App Category Breakdown</h3>
+                        <span className="chart-period">{selectedTimePeriod}</span>
+                      </div>
+                      {loading ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">Loading categories...</span>
+                        </div>
+                      ) : categoryData.length === 0 ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">No category data</span>
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                            Track some applications to see category breakdown
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="nivo-pie-container">
+                          <ResponsivePie
+                            key={`pie-${windowWidth}-${selectedTimePeriod}`}
+                            data={categoryData}
+                            margin={windowWidth > 768 ? 
+                              { top: 20, right: 120, bottom: 20, left: 20 } : 
+                              { top: 20, right: 20, bottom: 20, left: 20 }
+                            }
+                            innerRadius={windowWidth > 768 ? 0 : 0}
+                            padAngle={windowWidth > 768 ? 0.7 : 0.5}
+                            cornerRadius={windowWidth > 768 ? 3 : 2}
+                            colors={colors}
+                            borderWidth={1}
+                            borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
+                            arcLabelsSkipAngle={10}
+                            arcLabelsTextColor="#333333"
+                            animate={true}
+                            enableArcLabels={false}
+                            tooltip={({ datum }) => (
+                              <div style={{
+                                background: 'rgba(0, 0, 0, 0.8)',
+                                color: 'white',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                border: 'none'
+                              }}>
+                                <strong>{datum.label}</strong><br />
+                                {datum.value}% ({formatTimeWithFullWords(datum.data.hours || 0)})
+                              </div>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
                 </div>
                 
                 {/* Right Column - Top Applications Table */}
@@ -995,21 +1260,21 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                           </div>
                         ) : (
                           applicationTimeData.map((item, index) => (
-                          <div key={`${selectedTimePeriod}-${index}-${item.application}`} className="table-data-row">
-                            <div className="table-data-cell app-name-cell">
-                              <div className="app-icon-small">💻</div>
-                              <span className="app-name">{item.application}</span>
-                      </div>
-                            <span className="table-data-cell time-cell">{item.time}</span>
-                      </div>
+                            <div key={`${selectedTimePeriod}-${index}-${item.application}`} className="table-data-row">
+                              <div className="table-data-cell app-name-cell">
+                                <div className="app-icon-small">💻</div>
+                                <span className="app-name">{item.application}</span>
+                              </div>
+                              <span className="table-data-cell time-cell">{item.time}</span>
+                            </div>
                           ))
                         )}
                       </div>
                     </div>
                   </div>
                 </div>
+                </div>
               </div>
-            </div>
             </div>
           </div>
         )}

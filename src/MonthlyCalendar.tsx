@@ -375,8 +375,8 @@ const MonthlyCalendar: React.FC<MonthlyCalendarProps> = ({
                     <div className="pie-chart-container">
                       <ResponsivePie
                         data={selectedDayData.breakdown}
-                        margin={{ top: 20, right: 80, bottom: 20, left: 20 }}
-                        innerRadius={0.4}
+                        margin={{ top: 80, right: 120, bottom: 80, left: 120 }}
+                        innerRadius={0.5}
                         padAngle={0.7}
                         cornerRadius={3}
                         colors={{ datum: 'data.color' }}
