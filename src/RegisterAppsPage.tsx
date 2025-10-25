@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import './RegisterAppsPage.css';
 import Sidebar from './Sidebar';
 import { invoke } from '@tauri-apps/api/core';
 import { formatForTable } from './utils';
+import { useDashboardCache } from './contexts/DashboardCacheContext';
 
 interface App {
   id: string;
@@ -43,6 +45,9 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [detectedApps, setDetectedApps] = useState<DetectedApp[]>([]);
   const [isLoadingDetectedApps, setIsLoadingDetectedApps] = useState(false);
+
+  // Dashboard cache context for updating applications data
+  const { updateCache } = useDashboardCache();
 
 
 
@@ -253,6 +258,57 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
     }
   };
 
+  // Handle category update
+  const handleCategoryUpdate = async (appId: string, newCategory: string) => {
+    try {
+      console.log('🏷️ Updating category for app:', appId, 'to:', newCategory);
+      
+      const app = apps.find(a => a.id === appId);
+      if (!app) {
+        console.error('❌ App not found:', appId);
+        setError('App not found');
+        return;
+      }
+
+      // Call backend to update category using the existing update function
+      await invoke('update_my_application', {
+        appId: appId,
+        name: null,
+        processName: null,
+        iconPath: null,
+        category: newCategory,
+        isTracked: null
+      });
+
+      console.log('✅ App category updated successfully');
+
+      // Update local state
+      const updatedApps = apps.map(app =>
+        app.id === appId ? { ...app, category: newCategory } : app
+      );
+      setApps(updatedApps);
+      
+      // Update dashboard cache so the top applications table reflects the new category
+      // Map to Application interface (ensure is_tracked is boolean)
+      const applicationsForCache = updatedApps.map(app => ({
+        ...app,
+        is_tracked: app.is_tracked ?? false
+      }));
+      
+      updateCache({
+        applications: applicationsForCache,
+        dataCacheTimestamp: Date.now()
+      });
+      
+      setError(null);
+    } catch (error) {
+      console.error('❌ Failed to update app category:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setError(`Failed to update application category: ${errorMessage}`);
+    }
+  };
+
   const handleDeleteApp = async (appId: string) => {
     try {
       console.log('🗑️ Deleting app:', appId);
@@ -301,6 +357,55 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
     setShowDropdown(!showDropdown);
   };
 
+  // Smart category detection based on app name
+  const getSmartCategory = (appName: string): string => {
+    const name = appName.toLowerCase();
+    
+    if (name.includes('code') || name.includes('visual studio') || name.includes('dev') || 
+        name.includes('terminal') || name.includes('powershell') || name.includes('cmd') ||
+        name.includes('git') || name.includes('sublime') || name.includes('atom') ||
+        name.includes('vim') || name.includes('emacs') || name.includes('intellij') ||
+        name.includes('eclipse') || name.includes('android studio')) {
+      return 'Development';
+    }
+    
+    if (name.includes('chrome') || name.includes('firefox') || name.includes('edge') || 
+        name.includes('safari') || name.includes('browser') || name.includes('opera')) {
+      return 'Browser';
+    }
+    
+    if (name.includes('slack') || name.includes('discord') || name.includes('teams') || 
+        name.includes('zoom') || name.includes('skype') || name.includes('telegram') ||
+        name.includes('whatsapp') || name.includes('messenger')) {
+      return 'Communication';
+    }
+    
+    if (name.includes('figma') || name.includes('photoshop') || name.includes('illustrator') || 
+        name.includes('sketch') || name.includes('canva') || name.includes('paint') ||
+        name.includes('gimp') || name.includes('inkscape')) {
+      return 'Design';
+    }
+    
+    if (name.includes('spotify') || name.includes('music') || name.includes('youtube') || 
+        name.includes('netflix') || name.includes('video') || name.includes('player') ||
+        name.includes('game') || name.includes('steam')) {
+      return 'Entertainment';
+    }
+    
+    if (name.includes('word') || name.includes('excel') || name.includes('powerpoint') || 
+        name.includes('office') || name.includes('notepad') || name.includes('calculator') ||
+        name.includes('calendar') || name.includes('mail') || name.includes('outlook')) {
+      return 'Productivity';
+    }
+    
+    if (name.includes('explorer') || name.includes('finder') || name.includes('files') ||
+        name.includes('archive') || name.includes('zip') || name.includes('extract')) {
+      return 'Utilities';
+    }
+    
+    return 'Other';
+  };
+
   const handleAddFromDropdown = async (detectedApp: DetectedApp) => {
     try {
       console.log('➕ Adding app from dropdown:', {
@@ -347,7 +452,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         name: trimmedName,
         processName: trimmedProcessName,
         iconPath: null,
-        category: 'Detected',
+        category: getSmartCategory(trimmedName),
         isTracked: true
       });
 
@@ -355,7 +460,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         name: trimmedName,
         processName: trimmedProcessName,
         iconPath: null,
-        category: 'Detected',
+        category: getSmartCategory(trimmedName),
         isTracked: true
       });
 
@@ -432,8 +537,253 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   const getEnabledCount = () => apps.filter(app => app.is_tracked ?? false).length;
   const getTotalCount = () => apps.length;
 
+  // Get unique categories from existing apps
+  const getExistingCategories = (): string[] => {
+    const categories = apps
+      .map(app => app.category)
+      .filter((category): category is string => category !== undefined && category !== null && category.trim() !== '');
+    
+    const uniqueCategories = Array.from(new Set(categories));
+    
+    // Add some default categories if none exist
+    const defaultCategories = ['Development', 'Browser', 'Communication', 'Design', 'Entertainment', 'Productivity', 'Utilities'];
+    
+    return Array.from(new Set([...uniqueCategories, ...defaultCategories])).sort();
+  };
+
+  // Category selector component
+  const CategorySelector = ({ 
+    currentCategory, 
+    onCategoryChange, 
+    disabled = false 
+  }: { 
+    currentCategory?: string; 
+    onCategoryChange: (category: string) => void; 
+    disabled?: boolean;
+  }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [customCategory, setCustomCategory] = useState('');
+    const [showCustomInput, setShowCustomInput] = useState(false);
+    const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
+    const existingCategories = getExistingCategories();
+    const selectorRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        const target = event.target as Node;
+        const isInsideSelector = selectorRef.current && selectorRef.current.contains(target);
+        const isInsideDropdown = dropdownRef.current && dropdownRef.current.contains(target);
+        
+        if (!isInsideSelector && !isInsideDropdown) {
+          setIsOpen(false);
+          setShowCustomInput(false);
+          setCustomCategory('');
+        }
+      };
+
+      if (isOpen) {
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }
+    }, [isOpen]);
+
+    const handleButtonClick = () => {
+      if (!isOpen && selectorRef.current) {
+        const rect = selectorRef.current.getBoundingClientRect();
+        setButtonRect(rect);
+      }
+      setIsOpen(!isOpen);
+    };
+
+    const handleCategorySelect = (category: string) => {
+      console.log('🎯 CategorySelector: handleCategorySelect called with:', category);
+      if (category === 'custom') {
+        console.log('🎯 CategorySelector: Opening custom input');
+        setShowCustomInput(true);
+        setCustomCategory('');
+      } else {
+        console.log('🎯 CategorySelector: Calling onCategoryChange with:', category);
+        onCategoryChange(category);
+        setIsOpen(false);
+        setShowCustomInput(false);
+      }
+    };
+
+    const handleCustomCategorySubmit = () => {
+      if (customCategory.trim()) {
+        onCategoryChange(customCategory.trim());
+        setIsOpen(false);
+        setShowCustomInput(false);
+        setCustomCategory('');
+      }
+    };
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        handleCustomCategorySubmit();
+      } else if (e.key === 'Escape') {
+        setShowCustomInput(false);
+        setIsOpen(false);
+        setCustomCategory('');
+      }
+    };
+
+    const dropdown = isOpen && !disabled && buttonRect ? (
+      <div 
+        ref={dropdownRef}
+        className="category-dropdown"
+        style={{
+          position: 'fixed',
+          top: buttonRect.bottom + window.scrollY,
+          left: buttonRect.left + window.scrollX,
+          width: buttonRect.width,
+          minWidth: '150px',
+          backgroundColor: 'white',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 999999,
+          maxHeight: '200px',
+          overflowY: 'auto'
+        }}
+      >
+        {existingCategories.map(category => (
+          <div
+            key={category}
+            className="category-option"
+            onClick={() => handleCategorySelect(category)}
+            style={{
+              padding: '8px 12px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              color: '#333',
+              backgroundColor: currentCategory === category ? '#e3f2fd' : 'white',
+              borderBottom: '1px solid #f0f0f0'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = currentCategory === category ? '#e3f2fd' : '#f8f9fa';
+              e.currentTarget.style.color = '#333';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = currentCategory === category ? '#e3f2fd' : 'white';
+              e.currentTarget.style.color = '#333';
+            }}
+          >
+            {category}
+          </div>
+        ))}
+        <div
+          className="category-option custom-option"
+          onClick={() => handleCategorySelect('custom')}
+          style={{
+            padding: '8px 12px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            borderTop: '1px solid #eee',
+            fontStyle: 'italic',
+            color: '#666',
+            backgroundColor: 'white'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f8f9fa';
+            e.currentTarget.style.color = '#666';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'white';
+            e.currentTarget.style.color = '#666';
+          }}
+        >
+          + Add new category
+        </div>
+        
+        {showCustomInput && (
+          <div style={{ padding: '8px', borderTop: '1px solid #eee', backgroundColor: 'white' }}>
+            <input
+              type="text"
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              onKeyDown={handleKeyPress}
+              placeholder="Enter new category"
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '4px 8px',
+                fontSize: '12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                color: '#333',
+                backgroundColor: 'white'
+              }}
+            />
+            <div style={{ marginTop: '4px', display: 'flex', gap: '4px' }}>
+              <button
+                onClick={handleCustomCategorySubmit}
+                style={{
+                  padding: '2px 6px',
+                  fontSize: '11px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '2px',
+                  cursor: 'pointer'
+                }}
+              >
+                Add
+              </button>
+              <button
+                onClick={() => {
+                  setShowCustomInput(false);
+                  setCustomCategory('');
+                }}
+                style={{
+                  padding: '2px 6px',
+                  fontSize: '11px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '2px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    ) : null;
+
+    return (
+      <div className="category-selector" style={{ position: 'relative' }} ref={selectorRef}>
+        <button
+          className="category-button"
+          onClick={handleButtonClick}
+          disabled={disabled}
+          style={{
+            padding: '4px 8px',
+            fontSize: '12px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            backgroundColor: isOpen ? '#f0f0f0' : 'white',
+            color: '#333',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.5 : 1,
+            minWidth: '100px',
+            textAlign: 'left'
+          }}
+        >
+          {currentCategory || 'Select category'} ▼
+        </button>
+        
+        {dropdown && createPortal(dropdown, document.body)}
+      </div>
+    );
+  };
+
   const AppCard = ({ app }: { app: App }) => (
-    <div className={`app-card ${!(app.is_tracked ?? false) ? 'disabled' : ''} ${isEditMode ? 'edit-mode' : ''}`}>
+    <div className={`app-card ${!(app.is_tracked ?? false) && !isEditMode ? 'disabled' : ''} ${isEditMode ? 'edit-mode' : ''}`}>
       {isEditMode && (
         <button 
           className="delete-button"
@@ -447,6 +797,31 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         <div className="app-info">
           <h4 className="app-name">{app.name}</h4>
           <p className="app-directory">{app.process_name}</p>
+          {isEditMode && (
+            <div className="app-category-edit" style={{ marginTop: '8px' }}>
+              <label style={{ fontSize: '12px', color: '#666', marginRight: '8px' }}>
+                Category:
+              </label>
+              <CategorySelector
+                currentCategory={app.category}
+                onCategoryChange={(category) => handleCategoryUpdate(app.id, category)}
+                disabled={false}
+              />
+            </div>
+          )}
+          {!isEditMode && app.category && (
+            <span className="app-category" style={{ 
+              fontSize: '11px', 
+              color: '#666', 
+              backgroundColor: '#f0f0f0', 
+              padding: '2px 6px', 
+              borderRadius: '3px',
+              marginTop: '4px',
+              display: 'inline-block'
+            }}>
+              {app.category}
+            </span>
+          )}
         </div>
         <div className="app-actions">
           {!isEditMode && (
