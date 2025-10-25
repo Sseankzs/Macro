@@ -180,24 +180,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     return mostUsedAppData;
   };
 
-  // Function to generate mock data for testing
-  const generateMockAppData = (timePeriod: 'today' | 'week' | 'month'): AppTimeData[] => {
-    const mockApps = [
-      { name: 'Visual Studio Code', hours: timePeriod === 'today' ? 2.5 : timePeriod === 'week' ? 15.2 : 45.8, category: 'Development' },
-      { name: 'Chrome', hours: timePeriod === 'today' ? 1.8 : timePeriod === 'week' ? 12.4 : 38.2, category: 'Web Browser' },
-      { name: 'Slack', hours: timePeriod === 'today' ? 1.2 : timePeriod === 'week' ? 8.7 : 25.1, category: 'Communication' },
-      { name: 'Terminal', hours: timePeriod === 'today' ? 0.8 : timePeriod === 'week' ? 5.3 : 18.9, category: 'Development' },
-      { name: 'Figma', hours: timePeriod === 'today' ? 0.5 : timePeriod === 'week' ? 3.2 : 12.4, category: 'Design' },
-      { name: 'Spotify', hours: timePeriod === 'today' ? 0.3 : timePeriod === 'week' ? 2.1 : 8.7, category: 'Entertainment' }
-    ];
-    
-    return mockApps.map(app => ({
-      application: app.name,
-      time: formatTimeWithFullWords(app.hours),
-      hours: app.hours,
-      category: app.category
-    }));
-  };
+
 
   // Function to aggregate time entries by application
   const aggregateTimeByApplication = (timeEntries: TimeEntry[], apps: Application[], timePeriod: 'today' | 'week' | 'month'): AppTimeData[] => {
@@ -205,7 +188,9 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     console.log('📊 Input data:', { 
       timeEntriesCount: timeEntries.length, 
       appsCount: apps.length,
-      timePeriod 
+      timePeriod,
+      firstTimeEntry: timeEntries[0],
+      firstApp: apps[0]
     });
     
     if (!timeEntries || timeEntries.length === 0) {
@@ -265,11 +250,28 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     filteredEntries.forEach(entry => {
       if (entry.app_id) {
         const startTime = new Date(entry.start_time);
-        const endTime = entry.end_time ? new Date(entry.end_time) : new Date();
+        let endTime: Date;
         
-        // Calculate duration in hours
-        const durationMs = endTime.getTime() - startTime.getTime();
+        // Handle different end time scenarios
+        if (entry.end_time) {
+          endTime = new Date(entry.end_time);
+        } else if (entry.duration_seconds) {
+          // Use duration_seconds if available and no end_time
+          endTime = new Date(startTime.getTime() + (entry.duration_seconds * 1000));
+        } else {
+          // For active entries without end_time, use current time
+          endTime = new Date();
+        }
+        
+        // Calculate duration in hours, ensuring it's positive
+        const durationMs = Math.max(0, endTime.getTime() - startTime.getTime());
         const durationHours = durationMs / (1000 * 60 * 60);
+        
+        // Skip entries with zero or negative duration
+        if (durationHours <= 0) {
+          console.warn('⚠️ Skipping entry with zero/negative duration:', entry.id);
+          return;
+        }
         
         const currentTime = appTimeMap.get(entry.app_id) || 0;
         appTimeMap.set(entry.app_id, currentTime + durationHours);
@@ -290,12 +292,15 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
         continue;
       }
       
-      result.push({
-        application: app.name,
-        time: formatTimeWithFullWords(hours),
-        hours: hours,
-        category: app.category
-      });
+      // Only include apps with meaningful time (at least 1 minute)
+      if (hours >= 1/60) {
+        result.push({
+          application: app.name,
+          time: formatTimeWithFullWords(hours),
+          hours: hours,
+          category: app.category
+        });
+      }
     }
     
     result.sort((a, b) => b.hours - a.hours);
@@ -513,6 +518,9 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
 
         // Set user data
         setUser(userData);
+        
+        // Set applications data
+        setApplications(applications);
 
         // Update global cache
         updateCache({
@@ -560,6 +568,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
 
         // Calculate table data based on selected time period
         const aggregatedData = aggregateTimeByApplication(timeEntries, applications, selectedTimePeriod);
+        console.log('🚀 Initial aggregation result:', aggregatedData);
         setApplicationTimeData(aggregatedData);
 
         // Calculate most used app for the past week
@@ -634,25 +643,21 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       loading
     });
     
-    // Only process if we're not loading
-    if (!loading) {
-      if (applications.length > 0 && cache.timeEntries && cache.timeEntries.length > 0) {
-        console.log('🔄 Processing real table data...');
-        const aggregatedData = aggregateTimeByApplication(cache.timeEntries, applications, selectedTimePeriod);
-        console.log('📊 Aggregated data for', selectedTimePeriod, ':', aggregatedData);
-        setApplicationTimeData(aggregatedData);
-        
-        // Update cache with the new aggregated data
-        updateCache({
-          applicationTimeData: aggregatedData
-        });
-      } else {
-        // Use mock data for testing when no real data is available
-        console.log('🔄 Using mock data for testing...');
-        const mockData = generateMockAppData(selectedTimePeriod);
-        console.log('📊 Mock data for', selectedTimePeriod, ':', mockData);
-        setApplicationTimeData(mockData);
-      }
+    // Only process if we're not loading and have real data available
+    if (!loading && applications.length > 0 && cache.timeEntries && cache.timeEntries.length > 0) {
+      console.log('🔄 Processing real table data...');
+      const aggregatedData = aggregateTimeByApplication(cache.timeEntries, applications, selectedTimePeriod);
+      console.log('📊 Aggregated data for', selectedTimePeriod, ':', aggregatedData);
+      setApplicationTimeData(aggregatedData);
+      
+      // Update cache with the new aggregated data
+      updateCache({
+        applicationTimeData: aggregatedData
+      });
+    } else if (!loading) {
+      // No real data available - show empty state
+      console.log('� No real data available, setting empty array...');
+      setApplicationTimeData([]);
     }
   }, [selectedTimePeriod, applications, cache.timeEntries, loading]);
 
@@ -977,9 +982,16 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                         <span className="table-header-cell time-header">Time</span>
                       </div>
                       <div className="table-body">
-                        {applicationTimeData.length === 0 ? (
+                        {loading ? (
+                          <div className="table-empty-state">
+                            <span className="empty-text">Loading applications...</span>
+                          </div>
+                        ) : applicationTimeData.length === 0 ? (
                           <div className="table-empty-state">
                             <span className="empty-text">No tracked applications</span>
+                            <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                              Debug: Apps({applications.length}) TimeEntries({cache.timeEntries?.length || 0}) Period({selectedTimePeriod})
+                            </div>
                           </div>
                         ) : (
                           applicationTimeData.map((item, index) => (
