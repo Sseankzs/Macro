@@ -9,6 +9,7 @@ import LogsPage from './LogsPage'
 import AIAssistantPage from './AIAssistantPage'
 import { DashboardCacheProvider } from './contexts/DashboardCacheContext'
 import { invoke } from '@tauri-apps/api/core'
+import { supabase } from './lib/supabase'
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -18,28 +19,46 @@ const isTauri = () => {
 function App() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isSignUp, setIsSignUp] = useState(false)
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant'>('dashboard')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     try {
-      console.log('Login attempt:', { email, password })
+      console.log('Login attempt:', { email })
       
       if (isTauri()) {
-        // Running in Tauri desktop app
-        const success = await invoke<boolean>('initialize_database_and_login', {
-          email,
-          password
+        // Running in Tauri desktop app - use Supabase auth directly
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
         })
-        
-        if (success) {
-          console.log('Login successful, database initialized')
-          setIsLoggedIn(true)
-        } else {
-          console.error('Login failed')
-          alert('Login failed. Please check your credentials.')
+
+        if (error) {
+          console.error('Login failed:', error.message)
+          alert(`Login failed: ${error.message}`)
+          return
+        }
+
+        if (data.user) {
+          console.log('Login successful:', data.user.email)
+          
+          // Initialize database connection after successful login
+          const dbInitialized = await invoke<boolean>('initialize_database_and_login', {
+            email,
+            password
+          })
+          
+          if (dbInitialized) {
+            console.log('Database initialized successfully')
+            setIsLoggedIn(true)
+          } else {
+            console.error('Database initialization failed')
+            alert('Login successful but database initialization failed.')
+          }
         }
       } else {
         // Running in browser - development mode
@@ -52,6 +71,70 @@ function App() {
       const errorMessage = error instanceof Error ? error.message : String(error)
       alert(`Login failed: ${errorMessage}`)
     }
+  }
+
+  const handleSignUp = async (email: string, password: string) => {
+    try {
+      console.log('Sign up attempt:', { email })
+      
+      // Validate password confirmation
+      if (password !== confirmPassword) {
+        alert('Passwords do not match!')
+        return
+      }
+
+      if (password.length < 6) {
+        alert('Password must be at least 6 characters long!')
+        return
+      }
+      
+      if (isTauri()) {
+        // Running in Tauri desktop app - use Supabase auth directly
+        const { data, error } = await supabase.auth.signUp({
+          email: email,
+          password: password,
+        })
+
+        if (error) {
+          console.error('Sign up failed:', error.message)
+          alert(`Sign up failed: ${error.message}`)
+          return
+        }
+
+        if (data.user) {
+          console.log('Sign up successful:', data.user.email)
+          
+          // Check if user needs email confirmation
+          if (!data.session) {
+            alert('Please check your email and click the confirmation link to activate your account.')
+          } else {
+            alert('Account created successfully! Please log in.')
+          }
+          
+          setIsSignUp(false)
+          setEmail('')
+          setPassword('')
+          setConfirmPassword('')
+        }
+      } else {
+        // Running in browser - development mode
+        console.log('Running in browser mode - simulating sign up')
+        alert('Account created successfully! Please log in.')
+        setIsSignUp(false)
+        setEmail('')
+        setPassword('')
+        setConfirmPassword('')
+      }
+    } catch (error) {
+      console.error('Sign up error:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      alert(`Sign up failed: ${errorMessage}`)
+    }
+  }
+
+  const handleSignUpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await handleSignUp(email, password)
   }
 
   // Start activity tracking when user logs in
@@ -75,20 +158,46 @@ function App() {
   }, [isLoggedIn])
 
   const handleLogout = async () => {
-    // Stop activity tracking when user logs out
-    if (isTauri()) {
-      try {
-        await invoke('stop_activity_tracking')
-        console.log('Activity tracking stopped on logout')
-      } catch (error) {
-        console.error('Failed to stop activity tracking on logout:', error)
+    try {
+      // Stop activity tracking when user logs out
+      if (isTauri()) {
+        try {
+          await invoke('stop_activity_tracking')
+          console.log('Activity tracking stopped on logout')
+        } catch (error) {
+          console.error('Failed to stop activity tracking on logout:', error)
+        }
+      } else {
+        console.log('Activity tracking not available in browser mode')
       }
-    } else {
-      console.log('Activity tracking not available in browser mode')
+
+      // Sign out from Supabase session
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error('Error signing out:', error.message)
+        // Still proceed with local logout even if Supabase signout fails
+      } else {
+        console.log('Successfully signed out from Supabase')
+      }
+
+      // Clear local state
+      setIsLoggedIn(false)
+      setCurrentPage('dashboard')
+      setEmail('')
+      setPassword('')
+      setConfirmPassword('')
+      
+      console.log('User logged out successfully')
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Still clear local state even if there's an error
+      setIsLoggedIn(false)
+      setCurrentPage('dashboard')
+      setEmail('')
+      setPassword('')
+      setConfirmPassword('')
     }
-    
-    setIsLoggedIn(false)
-    setCurrentPage('dashboard')
   }
 
   const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => {
@@ -176,10 +285,10 @@ function App() {
     <div className="login-container">
       <div className="login-left">
         <div className="login-form-container">
-          <h1 className="login-title">Welcome Back!</h1>
-          <p className="login-subtitle">Sign in to your account</p>
+          <h1 className="login-title">{isSignUp ? 'Create Account!' : 'Welcome Back!'}</h1>
+          <p className="login-subtitle">{isSignUp ? 'Sign up for a new account' : 'Sign in to your account'}</p>
           
-          <form onSubmit={handleSubmit} className="login-form">
+          <form onSubmit={isSignUp ? handleSignUpSubmit : handleSubmit} className="login-form">
             <div className="form-group">
               <label htmlFor="email">Email</label>
               <input
@@ -188,6 +297,7 @@ function App() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
+                required
               />
             </div>
             
@@ -199,39 +309,75 @@ function App() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
+                required
               />
             </div>
             
-            <div className="form-options">
-              <label className="checkbox-container">
-                <input type="checkbox" />
-                <span className="checkmark"></span>
-                Remember me
-              </label>
-              <a href="#" className="forgot-password">Forgot password?</a>
-            </div>
+            {isSignUp && (
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm Password</label>
+                <input
+                  type="password"
+                  id="confirmPassword"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm your password"
+                  required
+                />
+              </div>
+            )}
+            
+            {!isSignUp && (
+              <div className="form-options">
+                <label className="checkbox-container">
+                  <input type="checkbox" />
+                  <span className="checkmark"></span>
+                  Remember me
+                </label>
+                <a href="#" className="forgot-password">Forgot password?</a>
+              </div>
+            )}
             
             <button type="submit" className="login-button">
-              Log In
+              {isSignUp ? 'Sign Up' : 'Log In'}
             </button>
             
-            <div className="divider">
-              <span>or</span>
-            </div>
-            
-            <button type="button" className="google-button">
-              <svg className="google-icon" viewBox="0 0 24 24" width="20" height="20">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              Sign in with Google
-            </button>
+            {!isSignUp && (
+              <>
+                <div className="divider">
+                  <span>or</span>
+                </div>
+                
+                <button type="button" className="google-button">
+                  <svg className="google-icon" viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Sign in with Google
+                </button>
+              </>
+            )}
           </form>
           
           <div className="login-footer">
-            <p>Don't have an account? <a href="#" className="signup-link">Sign up</a></p>
+            <p>
+              {isSignUp ? "Already have an account? " : "Don't have an account? "}
+              <a 
+                href="#" 
+                className="signup-link" 
+                onClick={(e) => {
+                  e.preventDefault()
+                  setIsSignUp(!isSignUp)
+                  setEmail('')
+                  setPassword('')
+                  setConfirmPassword('')
+                }}
+              >
+                {isSignUp ? 'Sign in' : 'Sign up'}
+              </a>
+            </p>
           </div>
         </div>
       </div>

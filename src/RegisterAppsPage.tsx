@@ -57,12 +57,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
       console.log('🚀 Initializing RegisterAppsPage...');
       
       try {
-        // Ensure the default user exists in the database
-        console.log('👤 Ensuring default user exists...');
-        await invoke('ensure_default_user_exists');
-        console.log('✅ Default user verified/created');
-        
-        // Load apps after ensuring user exists
+        // Load apps
         await fetchApps();
       } catch (error) {
         console.error('❌ Failed to initialize page:', error);

@@ -4,6 +4,7 @@ use crate::database::{
 use crate::default_user::{get_default_user, get_default_user_id};
 use serde_json::json;
 use tauri::{State, Manager};
+use regex;
 
 // Helper function to generate UUID strings
 fn generate_id() -> String {
@@ -895,62 +896,179 @@ pub async fn initialize_database_and_login(
     Ok(true)
 }
 
-// ===== DEFAULT USER CONVENIENCE COMMANDS =====
-
 #[tauri::command]
-pub async fn ensure_default_user_exists(db: State<'_, Database>) -> Result<User, String> {
-    let default_user_id = get_default_user_id();
-    
-    // First, try to get the existing user
-    let url = format!("{}/rest/v1/users?id=eq.{}", db.base_url, default_user_id);
-    let response = db.client
-        .get(&url)
-        .header("apikey", &db.api_key)
-        .header("Authorization", format!("Bearer {}", db.api_key))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to check for existing user: {}", e))?;
+pub async fn sign_up_user(
+    app_handle: tauri::AppHandle,
+    email: String,
+    password: String,
+) -> Result<bool, String> {
+    // Load Supabase configuration
+    let supabase_config = match crate::config::SupabaseConfig::from_env() {
+        Ok(config) => config,
+        Err(e) => {
+            log::warn!("Failed to load Supabase config from environment: {}", e);
+            return Err(format!("Failed to load database configuration: {}", e));
+        }
+    };
 
-    if response.status().is_success() {
-        let users: Vec<User> = response.json().await
-            .map_err(|e| format!("Failed to parse users: {}", e))?;
-        
-        if let Some(existing_user) = users.first() {
-            println!("Default user already exists: {}", existing_user.name);
-            return Ok(existing_user.clone());
+    // Initialize database
+    let database = Database::new(supabase_config.url, supabase_config.anon_key)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    // Test database connection
+    match database.test_connection().await {
+        Ok(true) => {
+            log::info!("Database connection successful for sign up");
+        }
+        Ok(false) => {
+            return Err("Database connection test failed".to_string());
+        }
+        Err(e) => {
+            return Err(format!("Database connection error: {}", e));
         }
     }
 
-    // User doesn't exist, create it
-    println!("Creating default user with ID: {}", default_user_id);
-    let default_user = get_default_user();
+    // Validate input
+    if email.is_empty() || password.is_empty() {
+        return Err("Email and password are required".to_string());
+    }
+
+    if password.len() < 6 {
+        return Err("Password must be at least 6 characters long".to_string());
+    }
+
+    // Email validation regex
+    let email_regex = regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+        .map_err(|_| "Invalid email format validation error".to_string())?;
     
-    let user_data = json!({
-        "id": default_user.id,
-        "name": default_user.name,
-        "email": default_user.email,
-        "team_id": default_user.team_id,
-        "current_project_id": default_user.current_project_id,
-        "role": "owner", // Convert enum to string
-        "created_at": now().to_rfc3339(),
-        "updated_at": now().to_rfc3339()
+    if !email_regex.is_match(&email) {
+        return Err("Invalid email format".to_string());
+    }
+
+    // Check if user already exists in our users table
+    let existing_users_url = format!("{}/rest/v1/users?email=eq.{}", database.base_url, email);
+    let existing_users_response = database.client
+        .get(&existing_users_url)
+        .header("apikey", &database.api_key)
+        .header("Authorization", format!("Bearer {}", database.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to check existing users: {}", e))?;
+
+    if existing_users_response.status().is_success() {
+        let existing_users: Vec<User> = existing_users_response.json().await
+            .map_err(|e| format!("Failed to parse existing users: {}", e))?;
+        
+        if !existing_users.is_empty() {
+            return Err("A user with this email already exists".to_string());
+        }
+    }
+
+    // Create user via Supabase Auth API
+    let auth_url = format!("{}/auth/v1/signup", database.base_url);
+    let auth_payload = json!({
+        "email": email,
+        "password": password,
+        "data": {
+            "email": email
+        }
     });
 
-    let response = db
+    let auth_response = database.client
+        .post(&auth_url)
+        .header("apikey", &database.api_key)
+        .header("Content-Type", "application/json")
+        .json(&auth_payload)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to create auth user: {}", e))?;
+
+    if !auth_response.status().is_success() {
+        let error_text = auth_response.text().await
+            .unwrap_or_else(|_| "Unknown authentication error".to_string());
+        return Err(format!("Failed to create user account: {}", error_text));
+    }
+
+    let auth_result: serde_json::Value = auth_response.json().await
+        .map_err(|e| format!("Failed to parse auth response: {}", e))?;
+
+    // Log the auth response for debugging
+    log::info!("Auth response: {}", serde_json::to_string_pretty(&auth_result).unwrap_or_else(|_| "Could not serialize response".to_string()));
+
+    // Extract the user ID from the auth response - try multiple possible structures
+    let user_id = auth_result
+        .get("user")
+        .and_then(|user| user.get("id"))
+        .and_then(|id| id.as_str())
+        .or_else(|| {
+            // Try alternative structure: direct id field
+            auth_result.get("id").and_then(|id| id.as_str())
+        })
+        .or_else(|| {
+            // Try alternative structure: data.user.id
+            auth_result
+                .get("data")
+                .and_then(|data| data.get("user"))
+                .and_then(|user| user.get("id"))
+                .and_then(|id| id.as_str())
+        })
+        .or_else(|| {
+            // Try alternative structure: session.user.id
+            auth_result
+                .get("session")
+                .and_then(|session| session.get("user"))
+                .and_then(|user| user.get("id"))
+                .and_then(|id| id.as_str())
+        })
+        .ok_or_else(|| {
+            format!("Failed to extract user ID from auth response. Response structure: {}", 
+                   serde_json::to_string(&auth_result).unwrap_or_else(|_| "Could not serialize".to_string()))
+        })?;
+
+    // Extract the user's name from email (before @) as a default
+    let default_name = email.split('@').next().unwrap_or("User").to_string();
+
+    // Create a record in our users table
+    let user_data = json!({
+        "id": user_id,
+        "name": default_name,
+        "email": email,
+        "team_id": null,
+        "current_project_id": null,
+        "role": "member",
+        "created_at": now().to_rfc3339(),
+        "updated_at": now().to_rfc3339(),
+        "image_url": null
+    });
+
+    let users_response = database
         .execute_query("users", "POST", Some(user_data))
         .await
-        .map_err(|e| format!("Failed to create default user: {}", e))?;
+        .map_err(|e| format!("Failed to create user record: {}", e))?;
 
-    let created_users: Vec<User> = serde_json::from_value(response)
+    // Verify the user was created
+    let created_users: Vec<User> = serde_json::from_value(users_response)
         .map_err(|e| format!("Failed to parse created user: {}", e))?;
-    
-    if let Some(created_user) = created_users.into_iter().next() {
-        println!("Successfully created default user: {}", created_user.name);
-        Ok(created_user)
-    } else {
-        Err("No user was created".to_string())
+
+    if created_users.is_empty() {
+        return Err("User account was created but user record was not saved".to_string());
     }
+
+    log::info!("Successfully created user: {} with ID: {}", email, user_id);
+    Ok(true)
 }
+
+// ===== DEFAULT USER CONVENIENCE COMMANDS =====
+// Note: ensure_default_user_exists function removed to prevent automatic Dev User creation
+
+/* 
+#[tauri::command]
+pub async fn ensure_default_user_exists(db: State<'_, Database>) -> Result<User, String> {
+    // This function has been disabled to prevent automatic creation of Dev User
+    // Real users should be created through sign_up_user instead
+    Err("Default user creation disabled. Please sign up for a real account.".to_string())
+}
+*/
 
 #[tauri::command]
 pub async fn get_current_user() -> Result<User, String> {
@@ -1016,10 +1134,6 @@ pub async fn create_my_application(
     if process_name.trim().is_empty() {
         return Err("Process name cannot be empty".to_string());
     }
-    
-    // Ensure default user exists before creating application
-    let _user = ensure_default_user_exists(db.clone()).await
-        .map_err(|e| format!("Failed to ensure default user exists: {}", e))?;
     
     println!("Creating application: {} ({})", name, process_name);
     create_application(db, name, process_name, get_default_user_id(), icon_path, category, is_tracked).await

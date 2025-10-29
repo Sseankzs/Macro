@@ -76,7 +76,6 @@ pub fn run() {
             get_time_entries_by_app,
             update_time_entry,
             // Default user convenience commands
-            ensure_default_user_exists,
             get_current_user,
             get_current_user_id,
             get_my_applications,
@@ -100,6 +99,7 @@ pub fn run() {
             // Utility commands
             test_database_connection,
             initialize_database_and_login,
+            sign_up_user,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
