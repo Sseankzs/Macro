@@ -110,9 +110,12 @@ pub async fn get_user(db: State<'_, Database>, user_id: String) -> Result<Option
 #[tauri::command]
 pub async fn get_users_by_team(
     db: State<'_, Database>,
-    teamId: String,
+    teamId: Option<String>,
 ) -> Result<Vec<User>, String> {
-    let url = format!("{}/rest/v1/users?teamId=eq.{}", db.base_url, teamId);
+    let url = match teamId {
+        Some(tid) => format!("{}/rest/v1/users?team_id=eq.{}", db.base_url, tid),
+        None => format!("{}/rest/v1/users?team_id=is.null", db.base_url),
+    };
     let response = db.client
         .get(&url)
         .header("apikey", &db.api_key)

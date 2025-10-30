@@ -79,17 +79,35 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
         const teamsData = await invoke('get_all_teams') as Team[];
         console.log('Teams loaded:', teamsData);
         setTeams(teamsData);
-        
-        // Load all users
-        const allUsers = await invoke('get_all_users') as any[];
-        console.log('All users loaded:', allUsers);
-        
+
+        // Load users for the current user's team only (RLS should also apply).
+        // Always attempt server-side filtering via get_users_by_team. Pass the
+        // team_id even if it's null so the server can use `team_id=is.null`.
+        let users: any[] = [];
+        try {
+          const teamId = (currentUser as any)?.team_id ?? null;
+          if (teamId === null) {
+            // Current user is not assigned to a team -> do not fetch any users
+            console.log('Current user has no team_id; skipping fetch of team members');
+            users = [];
+          } else {
+            users = await invoke('get_users_by_team', { teamId: teamId }) as any[];
+            console.log('Team users loaded via get_users_by_team:', users);
+          }
+        } catch (err) {
+          console.error('Failed to load team users via get_users_by_team, falling back to get_all_users:', err);
+          // As a last resort, fetch all users and filter client-side to be safe.
+          const all = await invoke('get_all_users') as any[];
+          const currTeam = (currentUser as any)?.team_id ?? null;
+          users = all.filter(u => (u.team_id ?? null) === currTeam);
+        }
+
         // Transform users to team members
-        const members: TeamMember[] = allUsers.map(user => ({
+        const members: TeamMember[] = users.map(user => ({
           id: user.id,
           name: user.name,
-          position: user.role === 'Owner' ? 'Team Owner' : 
-                   user.role === 'Manager' ? 'Team Manager' : 'Team Member',
+          position: (typeof user.role === 'string' && user.role.toLowerCase() === 'owner') ? 'Team Owner' :
+                   (typeof user.role === 'string' && user.role.toLowerCase() === 'manager') ? 'Team Manager' : 'Team Member',
           inProgressTasks: 0, // TODO: Get real data
           hoursTracked: 0, // TODO: Get real data
           currentTask: 'No current task', // TODO: Get real data
@@ -98,7 +116,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
           avatar: getRandomEmoji(user.id),
           status: 'online' as const
         }));
-        
+
         setTeamMembers(members);
       } else {
         // Browser mode - use mock data
@@ -200,7 +218,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
   const handleDragEnd = (e: React.DragEvent) => {
     e.currentTarget.classList.remove('dragging');
     setDraggedMember(null);
-    setDragOverCategory(null);
+    setDragOverTeam(null);
   };
 
   const handleDragOver = (e: React.DragEvent, teamId: string) => {
