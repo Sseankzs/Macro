@@ -859,6 +859,7 @@ pub async fn initialize_database_and_login(
     app_handle: tauri::AppHandle,
     _email: String,
     _password: String,
+    user_id: String,
 ) -> Result<bool, String> {
     // Load Supabase configuration
     let supabase_config = match crate::config::SupabaseConfig::from_env() {
@@ -892,6 +893,9 @@ pub async fn initialize_database_and_login(
     // Initialize the activity tracker
     crate::tracking::init_tracker(database);
 
+    // Store the current user id for runtime use
+    crate::current_user::set_current_user_id(user_id);
+
     log::info!("Database initialized successfully");
     Ok(true)
 }
@@ -901,6 +905,7 @@ pub async fn sign_up_user(
     app_handle: tauri::AppHandle,
     email: String,
     password: String,
+    name: String,
 ) -> Result<bool, String> {
     // Load Supabase configuration
     let supabase_config = match crate::config::SupabaseConfig::from_env() {
@@ -1025,33 +1030,65 @@ pub async fn sign_up_user(
                    serde_json::to_string(&auth_result).unwrap_or_else(|_| "Could not serialize".to_string()))
         })?;
 
-    // Extract the user's name from email (before @) as a default
-    let default_name = email.split('@').next().unwrap_or("User").to_string();
+    // Use provided name if present, otherwise fallback to email local part
+    let chosen_name = if name.trim().is_empty() {
+        email.split('@').next().unwrap_or("User").to_string()
+    } else {
+        name.clone()
+    };
 
-    // Create a record in our users table
-    let user_data = json!({
-        "id": user_id,
-        "name": default_name,
-        "email": email,
-        "team_id": null,
-        "current_project_id": null,
-        "role": "member",
-        "created_at": now().to_rfc3339(),
+    // First try to update an existing users row for this id (in case Supabase
+    // or another process already created a placeholder row). This avoids
+    // duplicate-key conflicts when inserting.
+    let patch_url = format!("{}/rest/v1/users?id=eq.{}", database.base_url, user_id);
+    let patch_payload = json!({
+        "name": chosen_name,
         "updated_at": now().to_rfc3339(),
-        "image_url": null
     });
 
-    let users_response = database
-        .execute_query("users", "POST", Some(user_data))
+    let patch_response = database.client
+        .patch(&patch_url)
+        .header("apikey", &database.api_key)
+        .header("Authorization", format!("Bearer {}", database.api_key))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=representation")
+        .json(&patch_payload)
+        .send()
         .await
-        .map_err(|e| format!("Failed to create user record: {}", e))?;
+        .map_err(|e| format!("Failed to PATCH users record: {}", e))?;
 
-    // Verify the user was created
-    let created_users: Vec<User> = serde_json::from_value(users_response)
-        .map_err(|e| format!("Failed to parse created user: {}", e))?;
+    if patch_response.status().is_success() {
+        // If PATCH succeeded, we're done (it will return the updated record(s)).
+        log::info!("Updated user record for id {}", user_id);
+    } else {
+        // If PATCH did not succeed (e.g., no existing row), fall back to insert.
+        log::info!("PATCH users returned {} - attempting INSERT", patch_response.status());
 
-    if created_users.is_empty() {
-        return Err("User account was created but user record was not saved".to_string());
+        // Create a record in our users table
+        let user_data = json!({
+            "id": user_id,
+            "name": chosen_name,
+            "email": email,
+            "team_id": null,
+            "current_project_id": null,
+            "role": "member",
+            "created_at": now().to_rfc3339(),
+            "updated_at": now().to_rfc3339(),
+            "image_url": null
+        });
+
+        let users_response = database
+            .execute_query("users", "POST", Some(user_data))
+            .await
+            .map_err(|e| format!("Failed to create user record: {}", e))?;
+
+        // Verify the user was created
+        let created_users: Vec<User> = serde_json::from_value(users_response)
+            .map_err(|e| format!("Failed to parse created user: {}", e))?;
+
+        if created_users.is_empty() {
+            return Err("User account was created but user record was not saved".to_string());
+        }
     }
 
     log::info!("Successfully created user: {} with ID: {}", email, user_id);
@@ -1071,18 +1108,29 @@ pub async fn ensure_default_user_exists(db: State<'_, Database>) -> Result<User,
 */
 
 #[tauri::command]
-pub async fn get_current_user() -> Result<User, String> {
-    Ok(get_default_user())
+pub async fn get_current_user(db: State<'_, Database>) -> Result<User, String> {
+    // Resolve the current user id from runtime state and fetch the user
+    // from the database. If not found, fall back to the default dev user
+    // so the UI continues to work in development.
+    let user_id = crate::current_user::get_current_user_id();
+    match get_user(db, user_id).await {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => {
+            log::warn!("Current user id not found in database, falling back to default user");
+            Ok(get_default_user())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
 pub async fn get_current_user_id() -> Result<String, String> {
-    Ok(get_default_user_id())
+    Ok(crate::current_user::get_current_user_id())
 }
 
 #[tauri::command]
 pub async fn get_my_applications(db: State<'_, Database>) -> Result<Vec<Application>, String> {
-    get_applications_by_user(db, get_default_user_id()).await
+    get_applications_by_user(db, crate::current_user::get_current_user_id()).await
 }
 
 #[tauri::command]
@@ -1115,7 +1163,7 @@ pub async fn get_my_time_entries(
     db: State<'_, Database>,
     limit: Option<u32>,
 ) -> Result<Vec<TimeEntry>, String> {
-    get_time_entries_by_user(db, get_default_user_id(), limit).await
+    get_time_entries_by_user(db, crate::current_user::get_current_user_id(), limit).await
 }
 
 #[tauri::command]
@@ -1136,7 +1184,7 @@ pub async fn create_my_application(
     }
     
     println!("Creating application: {} ({})", name, process_name);
-    create_application(db, name, process_name, get_default_user_id(), icon_path, category, is_tracked).await
+    create_application(db, name, process_name, crate::current_user::get_current_user_id(), icon_path, category, is_tracked).await
 }
 
 #[tauri::command]
@@ -1224,7 +1272,7 @@ pub async fn create_my_time_entry(
     duration_seconds: Option<i64>,
     is_active: Option<bool>,
 ) -> Result<TimeEntry, String> {
-    create_time_entry(db, get_default_user_id(), app_id, task_id, start_time, end_time, duration_seconds, is_active).await
+    create_time_entry(db, crate::current_user::get_current_user_id(), app_id, task_id, start_time, end_time, duration_seconds, is_active).await
 }
 
 // ===== PROCESS DETECTION COMMANDS =====

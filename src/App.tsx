@@ -8,6 +8,7 @@ import MetricBuilderPage from './MetricBuilderPage'
 import LogsPage from './LogsPage'
 import AIAssistantPage from './AIAssistantPage'
 import { DashboardCacheProvider } from './contexts/DashboardCacheContext'
+import { CurrentUserProvider } from './contexts/CurrentUserContext'
 import { invoke } from '@tauri-apps/api/core'
 import { supabase } from './lib/supabase'
 
@@ -19,6 +20,7 @@ const isTauri = () => {
 function App() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
@@ -49,11 +51,23 @@ function App() {
           // Initialize database connection after successful login
           const dbInitialized = await invoke<boolean>('initialize_database_and_login', {
             email,
-            password
+            password,
+            userId: data.user.id
           })
           
           if (dbInitialized) {
             console.log('Database initialized successfully')
+            // Fetch current user info once and then mark logged in. This avoids
+            // re-checking the user's role on every page change.
+            try {
+              const currentUser = await invoke('get_current_user') as any;
+              // store in provider via passing initialUser when rendering below
+              (window as any).__INITIAL_CURRENT_USER__ = currentUser ?? null;
+            } catch (err) {
+              console.warn('Could not fetch current user after login:', err);
+              (window as any).__INITIAL_CURRENT_USER__ = null;
+            }
+
             setIsLoggedIn(true)
           } else {
             console.error('Database initialization failed')
@@ -64,6 +78,8 @@ function App() {
         // Running in browser - development mode
         console.log('Running in browser mode - auto-login for development')
         // Simulate successful login for development
+        // Provide a default dev current user so feature gating works in browser
+        (window as any).__INITIAL_CURRENT_USER__ = { role: 'owner', id: 'dev', name: 'Dev User' };
         setIsLoggedIn(true)
       }
     } catch (error) {
@@ -73,7 +89,7 @@ function App() {
     }
   }
 
-  const handleSignUp = async (email: string, password: string) => {
+  const handleSignUp = async (name: string, email: string, password: string) => {
     try {
       console.log('Sign up attempt:', { email })
       
@@ -89,32 +105,23 @@ function App() {
       }
       
       if (isTauri()) {
-        // Running in Tauri desktop app - use Supabase auth directly
-        const { data, error } = await supabase.auth.signUp({
-          email: email,
-          password: password,
+        // Running in Tauri desktop app - call backend sign_up_user which will create
+        // the auth user and insert the users table record (including provided name)
+        const success = await invoke<boolean>('sign_up_user', {
+          email,
+          password,
+          name
         })
 
-        if (error) {
-          console.error('Sign up failed:', error.message)
-          alert(`Sign up failed: ${error.message}`)
-          return
-        }
-
-        if (data.user) {
-          console.log('Sign up successful:', data.user.email)
-          
-          // Check if user needs email confirmation
-          if (!data.session) {
-            alert('Please check your email and click the confirmation link to activate your account.')
-          } else {
-            alert('Account created successfully! Please log in.')
-          }
-          
+        if (success) {
+          alert('Account created successfully! Please log in.')
           setIsSignUp(false)
           setEmail('')
           setPassword('')
           setConfirmPassword('')
+          setName('')
+        } else {
+          alert('Sign up failed on backend')
         }
       } else {
         // Running in browser - development mode
@@ -124,6 +131,7 @@ function App() {
         setEmail('')
         setPassword('')
         setConfirmPassword('')
+        setName('')
       }
     } catch (error) {
       console.error('Sign up error:', error)
@@ -134,7 +142,7 @@ function App() {
 
   const handleSignUpSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await handleSignUp(email, password)
+    await handleSignUp(name, email, password)
   }
 
   // Start activity tracking when user logs in
@@ -254,11 +262,16 @@ function App() {
 
   // Show dashboard if logged in
   if (isLoggedIn) {
+    // Use the initial current user fetched after login (if any) and pass it
+    // into the CurrentUserProvider so children can read role without extra calls.
+    const initialUser = (window as any).__INITIAL_CURRENT_USER__ ?? null;
+
     return (
-      <DashboardCacheProvider>
-        {currentPage === 'tasks' && (
-          <TaskPage onLogout={handleLogout} onPageChange={handlePageChange} />
-        )}
+      <CurrentUserProvider initialUser={initialUser}>
+        <DashboardCacheProvider>
+          {currentPage === 'tasks' && (
+            <TaskPage onLogout={handleLogout} onPageChange={handlePageChange} />
+          )}
         {currentPage === 'teams' && (
           <TeamsPage onLogout={handleLogout} onPageChange={handlePageChange} />
         )}
@@ -278,6 +291,7 @@ function App() {
           <Dashboard onLogout={handleLogout} onPageChange={handlePageChange} />
         )}
       </DashboardCacheProvider>
+      </CurrentUserProvider>
     )
   }
 
@@ -301,6 +315,20 @@ function App() {
               />
             </div>
             
+            {isSignUp && (
+              <div className="form-group">
+                <label htmlFor="name">Full name</label>
+                <input
+                  type="text"
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter your full name"
+                  required
+                />
+              </div>
+            )}
+
             <div className="form-group">
               <label htmlFor="password">Password</label>
               <input
@@ -312,7 +340,6 @@ function App() {
                 required
               />
             </div>
-            
             {isSignUp && (
               <div className="form-group">
                 <label htmlFor="confirmPassword">Confirm Password</label>

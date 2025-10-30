@@ -92,6 +92,7 @@ dependencies = [
  "chrono",
  "dotenv",
  "log",
+ "once_cell",
  "regex",
  "reqwest 0.11.27",
  "serde",

@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import './Dashboard.css';
+import { useCurrentUser } from './contexts/CurrentUserContext';
 
 interface SidebarProps {
   currentPage: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant';
@@ -8,6 +9,13 @@ interface SidebarProps {
 }
 
 function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
+  const isTauri = () => {
+    return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
+  }
+
+  const [allowedTeams, setAllowedTeams] = useState<boolean | null>(isTauri() ? null : true);
+  const { currentUser } = useCurrentUser();
+
   useEffect(() => {
     // Add class to body when sidebar is mounted
     document.body.classList.add('dashboard-active');
@@ -17,6 +25,23 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
       document.body.classList.remove('dashboard-active');
     };
   }, []);
+
+  // Compute allowedTeams from the context once the currentUser is set.
+  useEffect(() => {
+    if (!isTauri()) {
+      setAllowedTeams(true);
+      return;
+    }
+
+    if (!currentUser) {
+      // still loading or not set; keep null to avoid flicker
+      setAllowedTeams(null);
+      return;
+    }
+
+    const roleLc = typeof currentUser.role === 'string' ? currentUser.role.toLowerCase() : '';
+    setAllowedTeams(roleLc === 'owner' || roleLc === 'manager');
+  }, [currentUser]);
 
   const navItems = [
     {
@@ -103,22 +128,34 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
         <div className="nav-section">
           <h3 className="nav-section-title">Essentials</h3>
           <ul>
-            {navItems.map((item) => (
-              <li key={item.id} className={`nav-item ${currentPage === item.id ? 'active' : ''}`}>
-                <a 
-                  href="#" 
-                  className="nav-link" 
-                  onClick={(e) => { 
-                    e.preventDefault(); 
-                    onPageChange(item.id); 
-                  }}
-                >
-                  {item.icon}
-                  <span className="nav-label">{item.label}</span>
-                  <span className="nav-shortcut">{item.shortcut}</span>
-                </a>
-              </li>
-            ))}
+            {navItems
+              .filter(item => {
+                if (item.id === 'teams') {
+                  // In Tauri, hide until we know the role (allowedTeams === null)
+                  if (isTauri()) {
+                    return allowedTeams === true;
+                  }
+                  // In browser/dev mode, show teams
+                  return true;
+                }
+                return true;
+              })
+              .map((item) => (
+                <li key={item.id} className={`nav-item ${currentPage === item.id ? 'active' : ''}`}>
+                  <a 
+                    href="#" 
+                    className="nav-link" 
+                    onClick={(e) => { 
+                      e.preventDefault(); 
+                      onPageChange(item.id); 
+                    }}
+                  >
+                    {item.icon}
+                    <span className="nav-label">{item.label}</span>
+                    <span className="nav-shortcut">{item.shortcut}</span>
+                  </a>
+                </li>
+              ))}
           </ul>
         </div>
       </nav>

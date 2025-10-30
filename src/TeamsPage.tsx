@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import AddSectionModal from './AddSectionModal';
 import AddMemberModal from './AddMemberPage';
 import { invoke } from '@tauri-apps/api/core';
+import { useCurrentUser } from './contexts/CurrentUserContext';
 import { TeamsSkeletonGrid, LoadingOverlay } from './components/LoadingComponents';
 
 // Check if we're running in Tauri environment
@@ -145,9 +146,47 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
     }
   };
 
+  // Authorization: only Managers and Owners can view teams and other users
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const { currentUser } = useCurrentUser();
+
   useEffect(() => {
-    loadTeamsAndMembers();
-  }, []);
+    const init = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        if (isTauri()) {
+          // Use currentUser from context (populated once at login) to avoid
+          // re-querying the backend on every page change.
+          console.log('Current user for Teams page (from context):', currentUser);
+          const roleLc = typeof currentUser?.role === 'string' ? currentUser.role.toLowerCase() : '';
+          if (roleLc === 'owner' || roleLc === 'manager') {
+            setAuthorized(true);
+            await loadTeamsAndMembers();
+          } else {
+            // Not authorized to see teams/other users
+            setAuthorized(false);
+            // Ensure we don't load teams/users
+            setTeams([]);
+            setTeamMembers([]);
+          }
+        } else {
+          // Browser/dev mode: allow viewing
+          setAuthorized(true);
+          await loadTeamsAndMembers();
+        }
+      } catch (err) {
+        console.error('Authorization or data load failed:', err);
+        setError('Failed to load teams. Please try again.');
+        setAuthorized(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+  }, [currentUser]);
 
   const [draggedMember, setDraggedMember] = useState<string | null>(null);
   const [dragOverTeam, setDragOverTeam] = useState<string | null>(null);
@@ -400,7 +439,27 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       />
       
       <div className="main-content">
-        <div className="teams-container">
+        {authorized === null ? (
+          <div className="teams-container">
+            <LoadingOverlay />
+          </div>
+        ) : authorized === false ? (
+          <div className="teams-container">
+            <div className="unauthorized-state">
+              <h2>Access denied</h2>
+              <p>You do not have permission to view the Teams page.</p>
+              <div className="header-actions">
+                <button
+                  className="btn-secondary"
+                  onClick={() => onPageChange ? onPageChange('dashboard') : undefined}
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="teams-container">
           <div className="teams-header">
             <h1>Team Management</h1>
               <div className="header-actions">
@@ -505,6 +564,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
             </div>
           )}
         </div>
+        )}
       </div>
       
       <AddSectionModal 

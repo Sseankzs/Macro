@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod current_user;
 mod database;
 mod default_user;
 mod tracking;

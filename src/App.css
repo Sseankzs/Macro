@@ -96,6 +96,47 @@ body {
   box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
 }
 
+/* Keep all form input text color and background stable while typing/focusing */
+.form-group input {
+  color: #000000 !important;
+  caret-color: #000000 !important;
+  background: #f7fafc !important; /* match default input background */
+}
+
+.form-group input::placeholder {
+  color: #718096; /* keep placeholder subdued */
+}
+
+.form-group input:focus {
+  border-color: #e2e8f0 !important; /* avoid strong black border on focus */
+  background: #f7fafc !important;
+  box-shadow: none !important;
+}
+
+/* Override browser autofill styles (Chrome/Safari/Edge) for all form inputs */
+.form-group input:-webkit-autofill,
+.form-group textarea:-webkit-autofill,
+.form-group select:-webkit-autofill {
+  -webkit-text-fill-color: #000000 !important; /* keep text black */
+  -webkit-box-shadow: 0 0 0px 1000px #f7fafc inset !important; /* keep background */
+  box-shadow: 0 0 0px 1000px #f7fafc inset !important;
+  caret-color: #000000 !important;
+  transition: background-color 5000s ease-in-out 0s !important; /* prevent flash */
+}
+
+/* Also handle focus state after autofill */
+.form-group input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #000000 !important;
+  -webkit-box-shadow: 0 0 0px 1000px #f7fafc inset !important;
+  box-shadow: 0 0 0px 1000px #f7fafc inset !important;
+}
+
+/* Firefox autofill */
+.form-group input:-moz-autofill {
+  box-shadow: 0 0 0px 1000px #f7fafc inset !important;
+  -moz-text-fill-color: #000000 !important;
+}
+
 .form-options {
   display: flex;
   justify-content: space-between;
