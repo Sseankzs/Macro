@@ -1,11 +1,114 @@
 use crate::database::{Database, TimeEntry, Application};
-use crate::default_user::get_default_user_id;
 use serde_json::json;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use sysinfo::System;
 use tokio::time::interval;
+
+#[cfg(target_os = "windows")]
+use winapi::um::{
+    winuser::{GetForegroundWindow, GetWindowThreadProcessId},
+    tlhelp32::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS},
+    handleapi::CloseHandle,
+};
+
+// Get the process name of the currently focused window on Windows
+#[cfg(target_os = "windows")]
+fn get_focused_window_process_name() -> Option<String> {
+    unsafe {
+        // Get the handle of the currently focused window
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return None;
+        }
+
+        // Get the process ID of the window
+        let mut process_id: u32 = 0;
+        GetWindowThreadProcessId(hwnd, &mut process_id as *mut u32);
+        
+        if process_id == 0 {
+            return None;
+        }
+
+        // Create a snapshot of all processes
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == winapi::um::handleapi::INVALID_HANDLE_VALUE {
+            return None;
+        }
+
+        let mut process_entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            cntUsage: 0,
+            th32ProcessID: 0,
+            th32DefaultHeapID: 0,
+            th32ModuleID: 0,
+            cntThreads: 0,
+            th32ParentProcessID: 0,
+            pcPriClassBase: 0,
+            dwFlags: 0,
+            szExeFile: [0; 260],
+        };
+
+        // Find the process with the matching PID
+        if Process32FirstW(snapshot, &mut process_entry) != 0 {
+            loop {
+                if process_entry.th32ProcessID == process_id {
+                    // Convert the process name from wide string to String
+                    let process_name = String::from_utf16_lossy(&process_entry.szExeFile)
+                        .trim_end_matches('\0')
+                        .to_string();
+                    CloseHandle(snapshot);
+                    return Some(process_name);
+                }
+                
+                if Process32NextW(snapshot, &mut process_entry) == 0 {
+                    break;
+                }
+            }
+        }
+        
+        CloseHandle(snapshot);
+        None
+    }
+}
+
+// Fallback for non-Windows platforms - return the most active process
+#[cfg(not(target_os = "windows"))]
+fn get_focused_window_process_name() -> Option<String> {
+    get_most_active_process()
+}
+
+// Fallback method using CPU usage (kept as backup)
+fn get_most_active_process() -> Option<String> {
+    let mut system = System::new_all();
+    system.refresh_all();
+    
+    let mut max_cpu = 0.0;
+    let mut most_active_process = None;
+    
+    for (_pid, process) in system.processes() {
+        let cpu_usage = process.cpu_usage();
+        let process_name = process.name().to_string();
+        
+        // Skip system processes and find the most active user application
+        if cpu_usage > 0.5 && cpu_usage > max_cpu && !is_system_process(&process_name) {
+            max_cpu = cpu_usage;
+            most_active_process = Some(process_name);
+        }
+    }
+    
+    most_active_process
+}
+
+fn is_system_process(name: &str) -> bool {
+    let system_processes = [
+        "dwm.exe", "winlogon.exe", "csrss.exe", "wininit.exe", 
+        "services.exe", "lsass.exe", "svchost.exe", "explorer.exe",
+        "System", "Registry", "smss.exe", "audiodg.exe", "conhost.exe"
+    ];
+    
+    system_processes.iter().any(|&sys_proc| name.eq_ignore_ascii_case(sys_proc))
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentActivity {
@@ -20,10 +123,11 @@ pub struct CurrentActivity {
 
 #[derive(Debug, Clone)]
 pub struct TrackingState {
-    pub active_apps: HashMap<String, String>, // process_name -> entry_id
+    pub current_focused_app: Option<String>, // process_name of currently focused app
+    pub current_entry_id: Option<String>,    // entry_id of current tracking session
     pub last_activity_time: Instant,
     pub is_tracking: bool,
-    pub app_last_seen: HashMap<String, Instant>, // process_name -> last time we saw it running
+    pub last_focused_change: Instant,        // When focus last changed
     pub cached_current_activity: Option<CurrentActivity>, // Cached current activity
     pub cache_last_updated: Instant, // When the cache was last updated
 }
@@ -31,10 +135,11 @@ pub struct TrackingState {
 impl Default for TrackingState {
     fn default() -> Self {
         Self {
-            active_apps: HashMap::new(),
+            current_focused_app: None,
+            current_entry_id: None,
             last_activity_time: Instant::now(),
             is_tracking: false,
-            app_last_seen: HashMap::new(),
+            last_focused_change: Instant::now(),
             cached_current_activity: None,
             cache_last_updated: Instant::now(),
         }
@@ -108,17 +213,17 @@ impl ActivityTracker {
     }
 
     pub async fn stop_tracking(&self) -> Result<(), String> {
-        let entry_ids_to_end = {
+        let entry_id_to_end = {
             let mut state = self.state.lock().unwrap();
             state.is_tracking = false;
-            state.app_last_seen.clear();
+            state.current_focused_app = None;
             state.cached_current_activity = None; // Clear cache when stopping tracking
             state.cache_last_updated = Instant::now();
-            state.active_apps.drain().map(|(_, entry_id)| entry_id).collect::<Vec<_>>()
+            state.current_entry_id.take()
         };
         
-        // End all active time entries
-        for entry_id in entry_ids_to_end {
+        // End current active time entry if any
+        if let Some(entry_id) = entry_id_to_end {
             let _ = Self::end_time_entry(&self.db, entry_id).await;
         }
         
@@ -126,109 +231,72 @@ impl ActivityTracker {
     }
 
     pub async fn update_activity(&self) -> Result<(), String> {
+        // Get the currently focused window's process name
+        let focused_process_name = get_focused_window_process_name();
+        
+        println!("🔍 Currently focused window process: {:?}", focused_process_name);
+        
         // Get tracked applications from database
         let tracked_apps = self.get_tracked_applications().await?;
         
-        // Check which apps are running (outside of mutex lock)
-        let mut app_status = Vec::new();
-        for app in &tracked_apps {
-            let is_running = self.is_app_running(&app.process_name).await;
-            app_status.push((app.clone(), is_running));
-        }
+        // Find the tracked app that matches the focused process
+        let focused_tracked_app = if let Some(process_name) = &focused_process_name {
+            tracked_apps.iter().find(|app| app.process_name == *process_name)
+        } else {
+            None
+        };
         
-        let (apps_to_start, apps_to_end) = {
+        let (should_start_new, should_end_current, new_app) = {
             let mut state = self.state.lock().unwrap();
             state.last_activity_time = Instant::now();
             
-            let mut apps_to_start = Vec::new();
-            let mut apps_to_end = Vec::new();
-            let now = Instant::now();
+            let current_focused = &state.current_focused_app;
+            let has_focus_changed = current_focused != &focused_process_name;
             
-            // Check each tracked app
-            for (app, is_running) in app_status {
-                let is_tracked = state.active_apps.contains_key(&app.process_name);
+            if has_focus_changed {
+                println!("🔄 Focus changed from {:?} to {:?}", current_focused, focused_process_name);
+                state.last_focused_change = Instant::now();
+                state.current_focused_app = focused_process_name.clone();
                 
-                // Update last seen time
-                if is_running {
-                    state.app_last_seen.insert(app.process_name.clone(), now);
-                }
+                // Invalidate cache on focus change
+                state.cached_current_activity = None;
+                state.cache_last_updated = Instant::now();
                 
-                if is_running && !is_tracked {
-                    // App is running but not being tracked - start tracking
-                    apps_to_start.push(app.clone());
-                    println!("Detected {} is running, will start tracking", app.name);
-                } else if !is_running && is_tracked {
-                    // App is not running but was being tracked
-                    // Only stop tracking if we haven't seen it for at least 5 seconds (reduced cooldown)
-                    if let Some(last_seen) = state.app_last_seen.get(&app.process_name) {
-                        if now.duration_since(*last_seen) > Duration::from_secs(5) {
-                            if let Some(entry_id) = state.active_apps.remove(&app.process_name) {
-                                apps_to_end.push(entry_id);
-                                println!("Stopping tracking for {} (not seen for 5+ seconds)", app.name);
-                            }
-                        }
-                    } else {
-                        // If we never recorded seeing it, stop tracking immediately
-                        if let Some(entry_id) = state.active_apps.remove(&app.process_name) {
-                            apps_to_end.push(entry_id);
-                            println!("Stopping tracking for {} (never seen)", app.name);
-                        }
-                    }
-                }
+                let should_end = state.current_entry_id.is_some();
+                let should_start = focused_tracked_app.is_some();
+                
+                (should_start, should_end, focused_tracked_app.cloned())
+            } else {
+                // No focus change, no action needed
+                (false, false, None)
             }
-            
-            (apps_to_start, apps_to_end)
         };
         
-        // Check if we need to invalidate cache before consuming the vectors
-        let should_invalidate_cache = !apps_to_start.is_empty() || !apps_to_end.is_empty();
-        let apps_started_count = apps_to_start.len();
-        let apps_stopped_count = apps_to_end.len();
-        
-        // End tracking for apps that are no longer running
-        for entry_id in apps_to_end {
-            let _ = Self::end_time_entry(&self.db, entry_id).await;
-        }
-        
-        // Invalidate cache if any apps started or stopped tracking
-        if should_invalidate_cache {
-            let mut state = self.state.lock().unwrap();
-            state.cached_current_activity = None;
-            state.cache_last_updated = Instant::now();
-            println!("Cache invalidated due to activity changes: {} started, {} stopped", apps_started_count, apps_stopped_count);
-        }
-        
-        // Start tracking for new apps (only if not already being tracked)
-        for app in apps_to_start {
-            // Use a more robust check with atomic operations
-            let should_start_tracking = {
+        // End current tracking if focus changed away from tracked app
+        if should_end_current {
+            if let Some(entry_id) = {
                 let mut state = self.state.lock().unwrap();
-                if state.active_apps.contains_key(&app.process_name) {
-                    false // Already being tracked
-                } else {
-                    // Mark as being tracked immediately to prevent race conditions
-                    state.active_apps.insert(app.process_name.clone(), "pending".to_string());
-                    true
-                }
-            };
-            
-            if should_start_tracking {
+                state.current_entry_id.take()
+            } {
+                println!("⏹️ Ending tracking for entry_id: {}", entry_id);
+                let _ = Self::end_time_entry(&self.db, entry_id).await;
+            }
+        }
+        
+        // Start tracking new focused app if it's a tracked application
+        if should_start_new {
+            if let Some(app) = new_app {
+                println!("▶️ Starting tracking for focused app: {}", app.name);
                 match self.start_time_entry(&app).await {
                     Ok(entry_id) => {
                         let mut state = self.state.lock().unwrap();
-                        state.active_apps.insert(app.process_name.clone(), entry_id.clone());
-                        state.app_last_seen.insert(app.process_name.clone(), Instant::now());
-                        println!("Started tracking for {} (entry_id: {})", app.name, entry_id);
+                        state.current_entry_id = Some(entry_id.clone());
+                        println!("✅ Started tracking for {} (entry_id: {})", app.name, entry_id);
                     }
                     Err(e) => {
-                        // Remove the pending entry if creation failed
-                        let mut state = self.state.lock().unwrap();
-                        state.active_apps.remove(&app.process_name);
-                        eprintln!("Failed to start time entry for {}: {}", app.name, e);
+                        eprintln!("❌ Failed to start time entry for {}: {}", app.name, e);
                     }
                 }
-            } else {
-                println!("Skipping {} - already being tracked", app.name);
             }
         }
         
@@ -423,16 +491,16 @@ impl ActivityTracker {
     }
 
     pub async fn get_current_activity(&self) -> Result<Option<CurrentActivity>, String> {
-        let (active_apps, cached_activity, cache_age) = {
+        let (current_entry_id, cached_activity, cache_age) = {
             let state = self.state.lock().unwrap();
-            let active_apps = state.active_apps.clone();
+            let current_entry_id = state.current_entry_id.clone();
             let cached_activity = state.cached_current_activity.clone();
             let cache_age = state.cache_last_updated.elapsed();
-            (active_apps, cached_activity, cache_age)
+            (current_entry_id, cached_activity, cache_age)
         };
         
-        // If no active apps, return None and clear cache
-        if active_apps.is_empty() {
+        // If no current tracking, return None and clear cache
+        if current_entry_id.is_none() {
             let mut state = self.state.lock().unwrap();
             state.cached_current_activity = None;
             state.cache_last_updated = Instant::now();
@@ -453,7 +521,7 @@ impl ActivityTracker {
                     duration_minutes: duration.num_minutes(),
                     duration_hours: duration.num_hours(),
                     is_active: cached.is_active,
-                    active_apps_count: active_apps.len(),
+                    active_apps_count: 1, // Always 1 since we track only focused app
                 }));
             }
         }
@@ -463,17 +531,12 @@ impl ActivityTracker {
     }
 
     async fn refresh_current_activity_cache(&self) -> Result<Option<CurrentActivity>, String> {
-        let active_apps = {
+        let current_entry_id = {
             let state = self.state.lock().unwrap();
-            state.active_apps.clone()
+            state.current_entry_id.clone()
         };
         
-        if active_apps.is_empty() {
-            return Ok(None);
-        }
-        
-        // Get the first active app (we can enhance this to show the most recently active)
-        if let Some((_process_name, entry_id)) = active_apps.iter().next() {
+        if let Some(entry_id) = current_entry_id {
             // Get the time entry details
             let url = format!("{}/rest/v1/time_entries?id=eq.{}", self.db.base_url, entry_id);
             let response = self.db.client
@@ -489,43 +552,45 @@ impl ActivityTracker {
                     .map_err(|e| format!("Failed to parse time entry: {}", e))?;
                 
                 if let Some(entry) = entries.first() {
-                    // Get app details
-                    let app_url = format!("{}/rest/v1/applications?id=eq.{}", self.db.base_url, entry.app_id.as_ref().unwrap());
-                    let app_response = self.db.client
-                        .get(&app_url)
-                        .header("apikey", &self.db.api_key)
-                        .header("Authorization", format!("Bearer {}", self.db.api_key))
-                        .send()
-                        .await
-                        .map_err(|e| format!("Failed to fetch application: {}", e))?;
+                    // Get app details if app_id exists
+                    if let Some(app_id) = &entry.app_id {
+                        let app_url = format!("{}/rest/v1/applications?id=eq.{}", self.db.base_url, app_id);
+                        let app_response = self.db.client
+                            .get(&app_url)
+                            .header("apikey", &self.db.api_key)
+                            .header("Authorization", format!("Bearer {}", self.db.api_key))
+                            .send()
+                            .await
+                            .map_err(|e| format!("Failed to fetch application: {}", e))?;
 
-                    if app_response.status().is_success() {
-                        let apps: Vec<Application> = app_response.json().await
-                            .map_err(|e| format!("Failed to parse application: {}", e))?;
-                        
-                        if let Some(app) = apps.first() {
-                            let duration = chrono::Utc::now().signed_duration_since(entry.start_time);
-                            let duration_minutes = duration.num_minutes();
-                            let duration_hours = duration.num_hours();
+                        if app_response.status().is_success() {
+                            let apps: Vec<Application> = app_response.json().await
+                                .map_err(|e| format!("Failed to parse application: {}", e))?;
                             
-                            let activity = CurrentActivity {
-                                app_name: app.name.clone(),
-                                app_category: app.category.clone().unwrap_or_else(|| "Other".to_string()),
-                                start_time: entry.start_time,
-                                duration_minutes,
-                                duration_hours,
-                                is_active: entry.is_active,
-                                active_apps_count: active_apps.len(),
-                            };
-                            
-                            // Cache the result
-                            {
-                                let mut state = self.state.lock().unwrap();
-                                state.cached_current_activity = Some(activity.clone());
-                                state.cache_last_updated = Instant::now();
+                            if let Some(app) = apps.first() {
+                                let duration = chrono::Utc::now().signed_duration_since(entry.start_time);
+                                let duration_minutes = duration.num_minutes();
+                                let duration_hours = duration.num_hours();
+                                
+                                let activity = CurrentActivity {
+                                    app_name: app.name.clone(),
+                                    app_category: app.category.clone().unwrap_or_else(|| "Other".to_string()),
+                                    start_time: entry.start_time,
+                                    duration_minutes,
+                                    duration_hours,
+                                    is_active: entry.is_active,
+                                    active_apps_count: 1, // Always 1 for focused tracking
+                                };
+                                
+                                // Cache the result
+                                {
+                                    let mut state = self.state.lock().unwrap();
+                                    state.cached_current_activity = Some(activity.clone());
+                                    state.cache_last_updated = Instant::now();
+                                }
+                                
+                                return Ok(Some(activity));
                             }
-                            
-                            return Ok(Some(activity));
                         }
                     }
                 }
@@ -537,19 +602,27 @@ impl ActivityTracker {
 
     pub async fn get_active_applications_count(&self) -> Result<usize, String> {
         let state = self.state.lock().unwrap();
-        Ok(state.active_apps.len())
+        Ok(if state.current_entry_id.is_some() { 1 } else { 0 })
     }
 
     /// Stop tracking for a specific application by process name
     pub async fn stop_tracking_for_app(&self, process_name: &str) -> Result<(), String> {
-        let entry_id_to_end = {
-            let mut state = self.state.lock().unwrap();
-            state.active_apps.remove(process_name)
+        let should_stop = {
+            let state = self.state.lock().unwrap();
+            state.current_focused_app.as_ref() == Some(&process_name.to_string())
         };
         
-        if let Some(entry_id) = entry_id_to_end {
-            println!("Stopping tracking for app: {} (entry_id: {})", process_name, entry_id);
-            let _ = Self::end_time_entry(&self.db, entry_id).await;
+        if should_stop {
+            let entry_id_to_end = {
+                let mut state = self.state.lock().unwrap();
+                state.current_focused_app = None;
+                state.current_entry_id.take()
+            };
+            
+            if let Some(entry_id) = entry_id_to_end {
+                println!("Stopping tracking for app: {} (entry_id: {})", process_name, entry_id);
+                let _ = Self::end_time_entry(&self.db, entry_id).await;
+            }
         }
         
         Ok(())

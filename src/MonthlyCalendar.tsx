@@ -120,21 +120,42 @@ const MonthlyCalendar: React.FC<MonthlyCalendarProps> = ({
       return startTime >= dayStart && startTime <= dayEnd;
     });
 
+    console.log(`📅 Calculating hours for ${targetDate.toDateString()}: found ${dayEntries.length} entries`);
+
     // Calculate total time without double counting overlapping periods
     let totalSeconds = 0;
     const timePeriods: { start: Date; end: Date }[] = [];
 
     for (const entry of dayEntries) {
       const startTime = new Date(entry.start_time);
-      const endTime = entry.end_time ? new Date(entry.end_time) : new Date();
+      let endTime: Date;
+      
+      // Handle different end time scenarios - prioritize duration_seconds for accuracy
+      if (entry.end_time) {
+        endTime = new Date(entry.end_time);
+        console.log(`📅   Entry ${entry.id}: using end_time = ${endTime.toISOString()}`);
+      } else if (entry.duration_seconds) {
+        // Use duration_seconds if available and no end_time
+        endTime = new Date(startTime.getTime() + (entry.duration_seconds * 1000));
+        console.log(`📅   Entry ${entry.id}: using duration_seconds = ${entry.duration_seconds}s, calculated end_time = ${endTime.toISOString()}`);
+      } else {
+        // For active entries without end_time or duration, use current time
+        endTime = new Date();
+        console.log(`📅   Entry ${entry.id}: active entry, using current time = ${endTime.toISOString()}`);
+      }
       
       const entryStart = startTime < dayStart ? dayStart : startTime;
       const entryEnd = endTime > dayEnd ? dayEnd : endTime;
 
       if (entryStart < entryEnd) {
+        const durationHours = (entryEnd.getTime() - entryStart.getTime()) / (1000 * 60 * 60);
+        console.log(`📅   Entry ${entry.id}: duration = ${durationHours.toFixed(2)} hours`);
         timePeriods.push({ start: entryStart, end: entryEnd });
       }
     }
+
+    // Sort time periods by start time before merging - this is crucial for correct overlap detection
+    timePeriods.sort((a, b) => a.start.getTime() - b.start.getTime());
 
     // Merge overlapping periods
     const mergedPeriods: { start: Date; end: Date }[] = [];
@@ -146,6 +167,7 @@ const MonthlyCalendar: React.FC<MonthlyCalendarProps> = ({
         const lastPeriod = mergedPeriods[mergedPeriods.length - 1];
         
         if (period.start <= lastPeriod.end) {
+          console.log(`📅   Merging overlapping periods`);
           lastPeriod.end = new Date(Math.max(lastPeriod.end.getTime(), period.end.getTime()));
         } else {
           mergedPeriods.push(period);
@@ -158,7 +180,10 @@ const MonthlyCalendar: React.FC<MonthlyCalendarProps> = ({
       totalSeconds += (period.end.getTime() - period.start.getTime()) / 1000;
     }
 
-    return totalSeconds / 3600; // Convert to hours
+    const totalHours = totalSeconds / 3600;
+    console.log(`📅 Total hours for ${targetDate.toDateString()}: ${totalHours.toFixed(2)} hours (${mergedPeriods.length} merged periods)`);
+
+    return totalHours;
   };
 
   // Get breakdown data for a specific day
@@ -187,12 +212,25 @@ const MonthlyCalendar: React.FC<MonthlyCalendarProps> = ({
       const app = appMap.get(entry.app_id);
       if (app && app.category) {
         const startTime = new Date(entry.start_time);
-        const endTime = entry.end_time ? new Date(entry.end_time) : new Date();
-        const durationMs = endTime.getTime() - startTime.getTime();
+        let endTime: Date;
+        
+        // Handle different end time scenarios consistently with calculateHoursForDate
+        if (entry.end_time) {
+          endTime = new Date(entry.end_time);
+        } else if (entry.duration_seconds) {
+          endTime = new Date(startTime.getTime() + (entry.duration_seconds * 1000));
+        } else {
+          endTime = new Date();
+        }
+        
+        const durationMs = Math.max(0, endTime.getTime() - startTime.getTime());
         const durationHours = durationMs / (1000 * 60 * 60);
         
-        const currentTime = categoryTimeMap.get(app.category) || 0;
-        categoryTimeMap.set(app.category, currentTime + durationHours);
+        // Only add positive duration
+        if (durationHours > 0) {
+          const currentTime = categoryTimeMap.get(app.category) || 0;
+          categoryTimeMap.set(app.category, currentTime + durationHours);
+        }
       }
     });
 

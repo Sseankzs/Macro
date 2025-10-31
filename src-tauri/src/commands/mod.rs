@@ -1547,3 +1547,29 @@ fn get_friendly_name(process_name: &str) -> String {
                 .join(" ")
         })
 }
+
+#[tauri::command]
+pub async fn logout_user() -> Result<bool, String> {
+    println!("🚪 logout_user() called - starting cleanup process");
+    
+    // Stop tracking if tracker exists
+    if let Some(tracker) = crate::tracking::get_tracker() {
+        println!("🎯 Tracker found, attempting to stop tracking...");
+        if let Err(e) = tracker.stop_tracking().await {
+            log::error!("Error stopping tracking during logout: {}", e);
+            println!("❌ Error stopping tracking: {}", e);
+        } else {
+            log::info!("Activity tracking stopped during logout");
+            println!("✅ Activity tracking stopped successfully");
+        }
+    } else {
+        println!("⚠️ No tracker found - nothing to stop");
+    }
+
+    // Clear runtime current user id
+    crate::current_user::clear_current_user_id();
+    println!("🧹 Current user cleared from memory");
+
+    println!("🎉 logout_user() completed successfully");
+    Ok(true)
+}

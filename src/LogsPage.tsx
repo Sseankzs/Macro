@@ -270,10 +270,10 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
                           )}
                         </div>
                       </td>
-                      <td className="time-cell">
+                      <td className="start-time-cell">
                         {formatTimestamp(entry.start_time, 'datetime')}
                       </td>
-                      <td className="time-cell">
+                      <td className="end-time-cell">
                         {entry.end_time ? formatTimestamp(entry.end_time, 'datetime') : 'Active'}
                       </td>
                       <td className="duration-cell">

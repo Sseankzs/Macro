@@ -34,3 +34,6 @@ sysinfo = "0.30"
 dotenv = "0.15"
 regex = "1.0"
 once_cell = "1"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "handleapi", "tlhelp32"] }

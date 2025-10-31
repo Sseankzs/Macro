@@ -170,8 +170,9 @@ function App() {
       // Stop activity tracking when user logs out
       if (isTauri()) {
         try {
-          await invoke('stop_activity_tracking')
-          console.log('Activity tracking stopped on logout')
+          // Use logout_user to ensure server-side tracker stop and current user clearing
+          await invoke('logout_user')
+          console.log('Logout command invoked on backend (stops tracking & clears user)')
         } catch (error) {
           console.error('Failed to stop activity tracking on logout:', error)
         }

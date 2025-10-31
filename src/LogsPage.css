@@ -195,7 +195,7 @@
 
 .logs-table th {
   padding: 1rem;
-  text-align: left;
+  text-align: center;
   font-weight: 600;
   font-size: 0.875rem;
   letter-spacing: 0.5px;
@@ -223,12 +223,14 @@
 
 .app-cell {
   min-width: 200px;
+  text-align: center;
 }
 
 .app-info {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  align-items: center;
 }
 
 .app-name {
@@ -250,17 +252,37 @@
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.8rem;
   color: #374151;
-  min-width: 150px;
+  min-width: 130px;
+}
+
+.start-time-cell {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.8rem;
+  color: #374151;
+  min-width: 120px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.end-time-cell {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.8rem;
+  color: #374151;
+  min-width: 120px;
+  text-align: center;
+  font-weight: bold;
 }
 
 .duration-cell {
   font-weight: 600;
   color: #1f2937;
   min-width: 100px;
+  text-align: center;
 }
 
 .status-cell {
   min-width: 100px;
+  text-align: center;
 }
 
 .status-badge {

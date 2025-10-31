@@ -7,7 +7,7 @@ mod tracking;
 
 use commands::*;
 use tracking::{start_activity_tracking, stop_activity_tracking, update_activity, get_current_activity, get_active_applications_count, stop_tracking_for_app, stop_tracking_for_app_by_id};
-use tauri::Listener;
+use tauri::{Listener, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,21 +25,65 @@ pub fn run() {
                 )?;
             }
 
-            // Set up cleanup when app is about to close
+            println!("🚀 App setup starting - registering window close handlers...");
+
+            // Try multiple approaches to catch window close events
+            
+            // Approach 1: tauri://close-requested event
             app.handle().listen("tauri://close-requested", move |_event| {
-                // Stop all activity tracking when the app is closing
-                if let Some(tracker) = crate::tracking::get_tracker() {
-                    let rt = tokio::runtime::Handle::current();
-                    rt.block_on(async {
-                        if let Err(e) = tracker.stop_tracking().await {
-                            eprintln!("Error stopping tracking on app close: {}", e);
-                        } else {
-                            println!("Activity tracking stopped on app close");
-                        }
-                    });
+                println!("🔴 METHOD 1: tauri://close-requested event triggered!");
+                
+                // Create a new runtime for this context
+                match tokio::runtime::Runtime::new() {
+                    Ok(rt) => {
+                        rt.block_on(async {
+                            println!("🔄 Executing logout cleanup...");
+                            match crate::commands::logout_user().await {
+                                Ok(_) => println!("✅ Logout cleanup completed on app close"),
+                                Err(e) => eprintln!("❌ Error during logout cleanup on app close: {}", e),
+                            }
+                        });
+                    }
+                    Err(e) => eprintln!("❌ Failed to create runtime for cleanup: {}", e),
                 }
+                
+                println!("🏁 Window close cleanup finished");
             });
 
+            // Approach 2: Try the window-specific event
+            let main_window = app.get_webview_window("main");
+            if let Some(window) = main_window {
+                println!("🪟 Found main window, setting up window-specific close handler...");
+                
+                window.on_window_event(move |event| {
+                    match event {
+                        tauri::WindowEvent::CloseRequested { .. } => {
+                            println!("🔴 METHOD 2: WindowEvent::CloseRequested triggered!");
+                            
+                            // Create a new runtime for this context
+                            match tokio::runtime::Runtime::new() {
+                                Ok(rt) => {
+                                    rt.block_on(async {
+                                        println!("🔄 Executing logout cleanup via window event...");
+                                        match crate::commands::logout_user().await {
+                                            Ok(_) => println!("✅ Window event logout cleanup completed"),
+                                            Err(e) => eprintln!("❌ Error during window event logout cleanup: {}", e),
+                                        }
+                                    });
+                                }
+                                Err(e) => eprintln!("❌ Failed to create runtime for window event cleanup: {}", e),
+                            }
+                            
+                            println!("🏁 Window event cleanup finished");
+                        }
+                        _ => {}
+                    }
+                });
+            } else {
+                println!("⚠️ Could not find main window for event handler");
+            }
+
+            println!("✅ App setup completed with window close handlers registered");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -101,6 +145,7 @@ pub fn run() {
             test_database_connection,
             initialize_database_and_login,
             sign_up_user,
+            logout_user,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
