@@ -51,6 +51,25 @@ interface TeamMember {
   team_id?: string;
 }
 
+// Team interface
+interface Team {
+  id: string;
+  team_name: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Project interface
+interface Project {
+  id: string;
+  name: string;
+  team_id?: string;
+  manager_id?: string;
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface TaskPageProps {
   onLogout: () => void;
   onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
@@ -58,6 +77,11 @@ interface TaskPageProps {
 
 function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]); // Store all tasks
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -70,6 +94,8 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
   const [showE2EEHelp, setShowE2EEHelp] = useState(false);
+  const [membersSidebarCollapsed, setMembersSidebarCollapsed] = useState(false);
+  const [teamMemberCounts, setTeamMemberCounts] = useState<Record<string, number>>({});
 
   // Load all data from backend
   const loadAllData = async () => {
@@ -78,20 +104,25 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       setError(null);
       
       if (isTauri()) {
-        // Load tasks and team members in parallel
-        const [backendTasks, backendMembers] = await Promise.all([
+        // Load tasks, teams, projects, and all members in parallel
+        const [backendTasks, backendTeams, backendProjects, backendMembers] = await Promise.all([
           invoke('get_my_tasks') as Promise<BackendTask[]>,
+          invoke('get_all_teams') as Promise<Team[]>,
+          invoke('get_all_projects') as Promise<Project[]>,
           invoke('get_all_users') as Promise<TeamMember[]>
         ]);
 
         console.log('=== BACKEND DATA DEBUG ===');
         console.log('Backend tasks:', JSON.stringify(backendTasks, null, 2));
+        console.log('Backend teams:', JSON.stringify(backendTeams, null, 2));
+        console.log('Backend projects:', JSON.stringify(backendProjects, null, 2));
         console.log('Backend members:', JSON.stringify(backendMembers, null, 2));
         console.log('========================');
 
-        // Transform tasks with proper assignee names
+        // Transform tasks with proper assignee and project names
         const transformedTasks: Task[] = await Promise.all(backendTasks.map(async (task) => {
           const assignee = backendMembers.find(member => member.id === task.assignee_id);
+          const project = backendProjects.find(proj => proj.id === task.project_id);
           
           // Convert backend status to frontend status
           const frontendStatus = task.status === 'todo' ? 'Todo' :
@@ -120,7 +151,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             created_at: task.created_at,
             updated_at: task.updated_at,
             assignee_name: assignee?.name,
-            project_name: 'Unassigned Project'
+            project_name: project?.name || 'Unassigned Project'
           };
         }));
 
@@ -128,9 +159,26 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         console.log('Transformed tasks:', JSON.stringify(transformedTasks, null, 2));
         console.log('=====================================');
         
-        setTasks(transformedTasks);
+        setAllTasks(transformedTasks);
+        setTeams(backendTeams);
+        setProjects(backendProjects);
+        
+        // Select first team if available and none selected
+        if (backendTeams.length > 0 && !selectedTeam) {
+          setSelectedTeam(backendTeams[0].id);
+        }
       } else {
         // Browser mode - use mock data
+        const mockTeams: Team[] = [
+          { id: '1', team_name: 'Frontend Team' },
+          { id: '2', team_name: 'Backend Team' },
+        ];
+        
+        const mockProjects: Project[] = [
+          { id: 'project-1', name: 'Frontend App', team_id: '1' },
+          { id: 'project-2', name: 'Backend API', team_id: '2' },
+        ];
+        
         const mockTasks: Task[] = [
           {
             id: '1',
@@ -164,7 +212,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             id: '3',
             title: 'Write API documentation',
             description: 'Document all REST API endpoints',
-            project_id: 'project-1',
+            project_id: 'project-2',
             assignee_id: 'user-1',
             status: 'Done',
             priority: 'Low',
@@ -172,11 +220,17 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             assignee_name: 'John Doe',
-            project_name: 'Frontend App'
+            project_name: 'Backend API'
           }
         ];
 
-        setTasks(mockTasks);
+        setAllTasks(mockTasks);
+        setTeams(mockTeams);
+        setProjects(mockProjects);
+        
+        if (mockTeams.length > 0 && !selectedTeam) {
+          setSelectedTeam(mockTeams[0].id);
+        }
       }
     } catch (err) {
       console.error('Failed to load data:', err);
@@ -184,6 +238,108 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Load team members when team is selected
+  const loadTeamMembers = async (teamId: string | null) => {
+    if (!teamId) {
+      setTeamMembers([]);
+      return;
+    }
+    
+    try {
+      if (isTauri()) {
+        const members = await invoke('get_users_by_team', { teamId }) as TeamMember[];
+        setTeamMembers(members);
+      } else {
+        // Browser mode - mock data
+        const mockMembers: TeamMember[] = [
+          { id: 'user-1', name: 'John Doe', team_id: teamId },
+          { id: 'user-2', name: 'Jane Smith', team_id: teamId },
+        ];
+        setTeamMembers(mockMembers);
+      }
+    } catch (err) {
+      console.error('Failed to load team members:', err);
+      setTeamMembers([]);
+    }
+  };
+
+  // Filter tasks by selected team
+  useEffect(() => {
+    if (!selectedTeam) {
+      setTasks([]);
+      return;
+    }
+    
+    // Get projects for the selected team
+    const teamProjectIds = projects
+      .filter(project => project.team_id === selectedTeam)
+      .map(project => project.id);
+    
+    // Filter tasks that belong to team projects
+    const filteredTasks = allTasks.filter(task => 
+      teamProjectIds.includes(task.project_id)
+    );
+    
+    setTasks(filteredTasks);
+  }, [selectedTeam, allTasks, projects]);
+
+  // Load team members when team is selected
+  useEffect(() => {
+    loadTeamMembers(selectedTeam);
+  }, [selectedTeam]);
+
+  // Update member counts when teams change
+  useEffect(() => {
+    const counts: Record<string, number> = {};
+    teams.forEach(team => {
+      // Use mock numbers for now: random between 3-10 members
+      // If we have actual member data, prefer it, otherwise use mock
+      const actualMembers = teamMembers.filter(m => m.team_id === team.id);
+      if (actualMembers.length > 0) {
+        counts[team.id] = actualMembers.length;
+      } else {
+        // Generate a consistent mock number based on team ID
+        const hash = team.id.split('').reduce((a, b) => {
+          a = ((a << 5) - a) + b.charCodeAt(0);
+          return a & a;
+        }, 0);
+        counts[team.id] = (Math.abs(hash) % 8) + 3; // 3-10 members
+      }
+    });
+    setTeamMemberCounts(counts);
+  }, [teams, teamMembers]);
+
+  // Function to add a new team (skeleton - mock implementation for now)
+  const handleAddTeam = () => {
+    // Find the next team number
+    const existingTeamNumbers = teams
+      .map(team => {
+        const match = team.team_name.match(/^Team (\d+)$/);
+        return match ? parseInt(match[1]) : 0;
+      })
+      .filter(num => num > 0);
+    
+    const nextNumber = existingTeamNumbers.length > 0 
+      ? Math.max(...existingTeamNumbers) + 1 
+      : 1;
+    
+    const newTeamName = `Team ${nextNumber}`;
+    
+    // Create mock team (no backend call for now)
+    const mockTeam: Team = {
+      id: `team-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      team_name: newTeamName,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    // Add to local state
+    setTeams(prev => [...prev, mockTeam]);
+    
+    // Set as selected team
+    setSelectedTeam(mockTeam.id);
   };
 
   useEffect(() => {
@@ -436,6 +592,21 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     </div>
   );
 
+  // Function to get a consistent random emoji for a given ID (similar to TeamsPage)
+  const getRandomEmoji = (id: string) => {
+    const peopleEmojis = [
+      '👨', '👩', '👨‍💻', '👩‍💻', '👨‍🎨', '👩‍🎨', '👨‍🔬', '👩‍🔬',
+      '👨‍🚀', '👩‍🚀', '👨‍⚕️', '👩‍⚕️', '👨‍🏫', '👩‍🏫', '👨‍💼', '👩‍💼',
+      '🧑', '🧑‍💻', '🧑‍🎨', '🧑‍🔬', '🧑‍🚀', '🧑‍⚕️', '🧑‍🏫', '🧑‍💼',
+    ];
+    const hash = id.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    const index = Math.abs(hash) % peopleEmojis.length;
+    return peopleEmojis[index];
+  };
+
   return (
     <div className="dashboard-container">
       <Sidebar 
@@ -444,108 +615,184 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         onPageChange={onPageChange || (() => {})} 
       />
       
-      <div className="main-content">
-        <div className="tasks-container">
-          <div className="tasks-header">
-            <h1>Task Management</h1>
-            <div className="header-actions">
-              {!editMode ? (
-                <>
-                  <button 
-                    className="btn-text" 
-                    onClick={() => setShowAddTaskModal(true)}
-                    disabled={loading}
-                  >
-                    +
-                  </button>
+      {/* Unified Task Management Container */}
+      <div className="task-management-container">
+        {/* Left Sidebar - Teams */}
+        <div className="task-teams-sidebar">
+          <div className="task-teams-header">
+            <h3>Teams</h3>
+            <button 
+              className="add-team-btn"
+              onClick={handleAddTeam}
+              title="Add team"
+            >
+              +
+            </button>
+          </div>
+          <div className="task-teams-list">
+            {loading ? (
+              <div className="teams-loading">Loading teams...</div>
+            ) : teams.length === 0 ? (
+              <div className="teams-empty">No teams available</div>
+            ) : (
+              teams.map(team => (
+                <div
+                  key={team.id}
+                  className={`team-item ${selectedTeam === team.id ? 'active' : ''}`}
+                  onClick={() => setSelectedTeam(team.id)}
+                >
+                  <span className="team-icon">👥</span>
+                  <div className="team-info">
+                    <span className="team-name">{team.team_name}</span>
+                    <span className="team-member-count">
+                      {teamMemberCounts[team.id] || 0} {teamMemberCounts[team.id] === 1 ? 'member' : 'members'}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        
+        {/* Main Content - Kanban Board */}
+        <div className="main-content">
+          <div className="tasks-container">
+            <div className="tasks-header">
+              <h1>Task Management</h1>
+              <div className="header-actions">
+                {!editMode ? (
+                  <>
+                    <button 
+                      className="btn-text" 
+                      onClick={() => setShowAddTaskModal(true)}
+                      disabled={loading}
+                    >
+                      +
+                    </button>
+                    <button 
+                      className="btn-text"
+                      onClick={() => setEditMode(true)}
+                      disabled={loading}
+                    >
+                      Edit
+                    </button>
+                  </>
+                ) : (
                   <button 
                     className="btn-text"
-                    onClick={() => setEditMode(true)}
-                    disabled={loading}
+                    onClick={() => setEditMode(false)}
                   >
-                    Edit
+                    Done
                   </button>
-                </>
-              ) : (
-                <button 
-                  className="btn-text"
-                  onClick={() => setEditMode(false)}
-                >
-                  Done
-                </button>
-              )}
-            </div>
-          </div>
-          {E2EE_TASKS && (
-            <div style={{
-              marginTop: 8,
-              marginBottom: 8,
-              padding: '10px 12px',
-              borderRadius: 10,
-              background: '#f5f7ff',
-              color: '#1f3a8a',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12
-            }}>
-              <span role="img" aria-label="info">🔐</span>
-              <div style={{ flex: 1 }}>
-                <strong>Encryption is on.</strong> Task titles and descriptions are encrypted end‑to‑end.
-                <button
-                  onClick={() => setShowE2EEHelp(!showE2EEHelp)}
-                  style={{
-                    marginLeft: 8,
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#1d4ed8',
-                    cursor: 'pointer',
-                    textDecoration: 'underline'
-                  }}
-                >
-                  {showE2EEHelp ? 'Hide details' : 'Learn more'}
-                </button>
-                {showE2EEHelp && (
-                  <div style={{ marginTop: 8, color: '#334155' }}>
-                    - You may see a passphrase prompt the first time; this lets teammates decrypt tasks.<br />
-                    - For this prototype, everyone on the team uses the same passphrase.<br />
-                    - To change the passphrase, an admin can reset the team key (e.g., remove the saved team key in Supabase and clear the local cache), then set a new passphrase. Do this only during testing — old encrypted tasks won’t be readable after a reset.
-                  </div>
                 )}
               </div>
             </div>
-          )}
-          
-          {error && (
-            <div className="error-message" style={{ 
-              background: '#ffebee', 
-              color: '#c62828', 
-              padding: '12px 16px', 
-              borderRadius: '8px', 
-              margin: '16px 0' 
-            }}>
-              {error}
-            </div>
-          )}
-          
-          {loading ? (
-            <TasksSkeletonGrid />
-          ) : (
-            <div className="task-board">
-              <StatusColumn 
-                status="Todo" 
-                title="To Do" 
-                count={getTasksByStatus('Todo').length} 
-              />
-              <StatusColumn 
-                status="InProgress" 
-                title="In Progress" 
-                count={getTasksByStatus('InProgress').length} 
-              />
-              <StatusColumn 
-                status="Done" 
-                title="Done" 
-                count={getTasksByStatus('Done').length} 
-              />
+            {E2EE_TASKS && (
+              <div style={{
+                marginTop: 8,
+                marginBottom: 8,
+                padding: '10px 12px',
+                borderRadius: 10,
+                background: '#f5f7ff',
+                color: '#1f3a8a',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12
+              }}>
+                <span role="img" aria-label="info">🔐</span>
+                <div style={{ flex: 1 }}>
+                  <strong>Encryption is on.</strong> Task titles and descriptions are encrypted end‑to‑end.
+                  <button
+                    onClick={() => setShowE2EEHelp(!showE2EEHelp)}
+                    style={{
+                      marginLeft: 8,
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#1d4ed8',
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    {showE2EEHelp ? 'Hide details' : 'Learn more'}
+                  </button>
+                  {showE2EEHelp && (
+                    <div style={{ marginTop: 8, color: '#334155' }}>
+                      - You may see a passphrase prompt the first time; this lets teammates decrypt tasks.<br />
+                      - For this prototype, everyone on the team uses the same passphrase.<br />
+                      - To change the passphrase, an admin can reset the team key (e.g., remove the saved team key in Supabase and clear the local cache), then set a new passphrase. Do this only during testing — old encrypted tasks won't be readable after a reset.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {error && (
+              <div className="error-message" style={{ 
+                background: '#ffebee', 
+                color: '#c62828', 
+                padding: '12px 16px', 
+                borderRadius: '8px', 
+                margin: '16px 0' 
+              }}>
+                {error}
+              </div>
+            )}
+            
+            {loading ? (
+              <TasksSkeletonGrid />
+            ) : (
+              <div className="task-board">
+                <StatusColumn 
+                  status="Todo" 
+                  title="To Do" 
+                  count={getTasksByStatus('Todo').length} 
+                />
+                <StatusColumn 
+                  status="InProgress" 
+                  title="In Progress" 
+                  count={getTasksByStatus('InProgress').length} 
+                />
+                <StatusColumn 
+                  status="Done" 
+                  title="Done" 
+                  count={getTasksByStatus('Done').length} 
+                />
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Right Sidebar - Team Members */}
+        <div className={`task-members-sidebar ${membersSidebarCollapsed ? 'collapsed' : ''}`}>
+          <div className="task-members-header">
+            <h3>{selectedTeam ? teams.find(t => t.id === selectedTeam)?.team_name || 'Members' : 'Members'}</h3>
+            <button 
+              className="collapse-toggle-btn"
+              onClick={() => setMembersSidebarCollapsed(!membersSidebarCollapsed)}
+              title={membersSidebarCollapsed ? 'Expand members' : 'Collapse members'}
+            >
+              {membersSidebarCollapsed ? '▶' : '◀'}
+            </button>
+          </div>
+          {!membersSidebarCollapsed && (
+            <div className="task-members-list">
+              {!selectedTeam ? (
+                <div className="members-empty">Select a team to view members</div>
+              ) : loading ? (
+                <div className="members-loading">Loading members...</div>
+              ) : teamMembers.length === 0 ? (
+                <div className="members-empty">No members in this team</div>
+              ) : (
+                teamMembers.map(member => (
+                  <div key={member.id} className="member-item">
+                    <div className="member-avatar-container">
+                      <span className="member-avatar">{getRandomEmoji(member.id)}</span>
+                      <span className="member-status-indicator"></span>
+                    </div>
+                    <span className="member-name">{member.name}</span>
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>

@@ -134,11 +134,9 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
 
   return (
     <div className="sidebar">
-      <div className="sidebar-header">
-        <button className="logout-btn-top" onClick={onLogout}>Logout</button>
-      </div>
-      <div className="sidebar-header" style={{ paddingTop: 0 }}>
-        <label className="theme-toggle" title="Toggle dark mode">
+      {/* Hidden theme toggle - logic kept for later use */}
+      <div className="sidebar-header" style={{ display: 'none' }}>
+        <label className="theme-toggle" title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
           <input
             type="checkbox"
             checked={theme === 'dark'}
@@ -151,7 +149,6 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
       </div>
       <nav className="sidebar-nav">
         <div className="nav-section">
-          <h3 className="nav-section-title">Essentials</h3>
           <ul>
             {navItems
               .filter(item => {
@@ -165,29 +162,51 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
                 }
                 return true;
               })
-              .map((item) => (
-                <li key={item.id} className={`nav-item ${currentPage === item.id ? 'active' : ''}`}>
-                  <a 
-                    href="#" 
-                    className="nav-link" 
-                    onClick={(e) => { 
-                      e.preventDefault(); 
-                      onPageChange(item.id); 
-                    }}
-                  >
-                    {item.icon}
-                    <span className="nav-label">{item.label}</span>
-                    <span className="nav-shortcut">
-                      <span className="nav-shortcut-modifier">{item.shortcut.modifier}</span>
-                      <span className="nav-shortcut-separator">+</span>
-                      <span className="nav-shortcut-key">{item.shortcut.key}</span>
-                    </span>
-                  </a>
-                </li>
-              ))}
+              .map((item) => {
+                const tooltipText = `${item.label} (${item.shortcut.modifier}+${item.shortcut.key})`;
+                return (
+                  <li key={item.id} className={`nav-item ${currentPage === item.id ? 'active' : ''}`}>
+                    <a 
+                      href="#" 
+                      className="nav-link" 
+                      title={tooltipText}
+                      onClick={(e) => { 
+                        e.preventDefault(); 
+                        onPageChange(item.id); 
+                      }}
+                    >
+                      {item.icon}
+                      <span className="nav-tooltip">
+                        <span className="nav-tooltip-label">{item.label}</span>
+                        <span className="nav-tooltip-shortcut">
+                          <span className="nav-tooltip-modifier">{item.shortcut.modifier}</span>
+                          <span className="nav-tooltip-separator">+</span>
+                          <span className="nav-tooltip-key">{item.shortcut.key}</span>
+                        </span>
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
           </ul>
         </div>
       </nav>
+      <div className="sidebar-footer">
+        <button 
+          className="logout-btn-top" 
+          onClick={onLogout}
+          title="Logout"
+        >
+          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16,17 21,12 16,7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span className="nav-tooltip">
+            <span className="nav-tooltip-label">Logout</span>
+          </span>
+        </button>
+      </div>
     </div>
   );
 }
