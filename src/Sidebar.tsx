@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import './Dashboard.css';
 import { useCurrentUser } from './contexts/CurrentUserContext';
+import { useTheme } from './useTheme';
 
 interface SidebarProps {
   currentPage: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant';
@@ -15,7 +16,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
 
   const [allowedTeams, setAllowedTeams] = useState<boolean | null>(isTauri() ? null : true);
   const { currentUser } = useCurrentUser();
-
+  const { theme, toggleTheme } = useTheme();
   useEffect(() => {
     // Add class to body when sidebar is mounted
     document.body.classList.add('dashboard-active');
@@ -123,6 +124,18 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     <div className="sidebar">
       <div className="sidebar-header">
         <button className="logout-btn-top" onClick={onLogout}>Logout</button>
+      </div>
+      <div className="sidebar-header" style={{ paddingTop: 0 }}>
+        <label className="theme-toggle" title="Toggle dark mode">
+          <input
+            type="checkbox"
+            checked={theme === 'dark'}
+            onChange={toggleTheme}
+            aria-label="Toggle dark mode"
+          />
+          <span className="theme-slider" aria-hidden></span>
+          <span className="theme-label">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
+        </label>
       </div>
       <nav className="sidebar-nav">
         <div className="nav-section">

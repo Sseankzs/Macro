@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import './LogsPage.css';
 import Sidebar from './Sidebar';
 import { formatTimestamp } from './utils';
+import { BYPASS_DB_APPS } from './config';
 
 interface TimeEntry {
   id: string;
@@ -26,10 +27,11 @@ interface Application {
 
 interface LogsPageProps {
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
 }
 
 function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
+  // Controlled via env flag in src/config.ts
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [applications, setApplications] = useState<Map<string, Application>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
@@ -42,10 +44,14 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
   // Filtering state
   const [timeFilter, setTimeFilter] = useState<'all' | 'day' | 'week' | 'month'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // OS detection for debugging
+  const [detectedOS, setDetectedOS] = useState<string>('Unknown');
 
   useEffect(() => {
     fetchTimeEntries();
     fetchApplications();
+    fetchDetectedOS();
   }, [timeFilter]);
 
   const fetchTimeEntries = async () => {
@@ -100,12 +106,37 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
 
   const fetchApplications = async () => {
     try {
-      const apps = await invoke<Application[]>('get_my_applications');
-      const appMap = new Map<string, Application>();
-      apps.forEach(app => appMap.set(app.id, app));
-      setApplications(appMap);
+      if (BYPASS_DB_APPS) {
+        // Use detected processes as the applications list (temporary bypass)
+        type DetectedProcess = { name: string; process_name: string };
+        const detected = await invoke<DetectedProcess[]>('get_running_processes');
+        const mapped: Application[] = detected.map((p, idx) => ({
+          id: `detected-${idx}`,
+          name: p.name || p.process_name,
+          process_name: p.process_name,
+          category: undefined,
+        }));
+        const appMap = new Map<string, Application>();
+        mapped.forEach(app => appMap.set(app.id, app));
+        setApplications(appMap);
+      } else {
+        // Original DB-backed fetch (restored when bypass is disabled)
+        const apps = await invoke<Application[]>('get_my_applications');
+        const appMap = new Map<string, Application>();
+        apps.forEach(app => appMap.set(app.id, app));
+        setApplications(appMap);
+      }
     } catch (error) {
       console.error('Failed to fetch applications:', error);
+    }
+  };
+
+  const fetchDetectedOS = async () => {
+    try {
+      const os = await invoke<string>('get_detected_os');
+      setDetectedOS(os);
+    } catch (error) {
+      console.error('Failed to fetch detected OS:', error);
     }
   };
 
@@ -180,6 +211,20 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
               <button className="btn-secondary" onClick={() => fetchTimeEntries()}>
                 Refresh
               </button>
+            </div>
+            {/* OS Detection Debug Indicator */}
+            <div style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              background: '#f0f0f0',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              color: '#666',
+              border: '1px solid #ddd'
+            }}>
+              🖥️ OS: {detectedOS}
             </div>
           </div>
           

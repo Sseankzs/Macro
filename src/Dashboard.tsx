@@ -7,6 +7,7 @@ import { ResponsivePie } from '@nivo/pie';
 import { useDashboardCache } from './contexts/DashboardCacheContext';
 import { DashboardSkeletonGrid } from './components/LoadingComponents';
 import MonthlyCalendar from './MonthlyCalendar';
+import { BYPASS_DB_APPS } from './config';
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -82,6 +83,9 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   // Main dashboard loading state
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // OS detection for debugging
+  const [detectedOS, setDetectedOS] = useState<string>('Unknown');
 
   // Time filter hotkeys - only work when on dashboard
   useEffect(() => {
@@ -662,20 +666,37 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     try {
       if (isTauri()) {
         const activity = await invoke('get_current_activity') as CurrentActivity | null;
-        
+
         if (activity) {
           setCurrentActivity(activity);
-          // Cache the activity
-          updateCache({
-            currentActivity: activity,
-            currentActivityTimestamp: Date.now()
-          });
+          updateCache({ currentActivity: activity, currentActivityTimestamp: Date.now() });
         } else {
-          setCurrentActivity(null);
-          updateCache({
-            currentActivity: null,
-            currentActivityTimestamp: Date.now()
-          });
+          // Fallback: derive current activity from detected processes
+          try {
+            type DetectedProcess = { name: string; process_name: string; is_active: boolean };
+            const processes = await invoke<DetectedProcess[]>('get_running_processes');
+            const active = processes.find(p => p.is_active) || processes[0];
+            if (active) {
+              const fallback: CurrentActivity = {
+                app_name: active.name || active.process_name,
+                app_category: 'Other',
+                start_time: new Date().toISOString(),
+                duration_minutes: 0,
+                duration_hours: 0,
+                is_active: true,
+                active_apps_count: 1,
+              };
+              setCurrentActivity(fallback);
+              updateCache({ currentActivity: fallback, currentActivityTimestamp: Date.now() });
+            } else {
+              setCurrentActivity(null);
+              updateCache({ currentActivity: null, currentActivityTimestamp: Date.now() });
+            }
+          } catch (e) {
+            // If process detection fails, keep idle
+            setCurrentActivity(null);
+            updateCache({ currentActivity: null, currentActivityTimestamp: Date.now() });
+          }
         }
       } else {
         // Browser mode - set mock activity for development
@@ -707,28 +728,55 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       setError(null);
       
       if (isTauri()) {
-        // Load all data in parallel for faster loading
-        const [userData, timeEntries, applications] = await Promise.all([
+        // Load mandatory data in parallel for faster loading
+        const [userData, timeEntries, detectedOS] = await Promise.all([
           invoke('get_current_user') as Promise<{ name: string }>,
           invoke('get_my_time_entries', { limit: 1000 }) as Promise<TimeEntry[]>,
-          invoke('get_my_applications') as Promise<Application[]>
+          invoke('get_detected_os') as Promise<string>
         ]);
 
         console.log('✅ Dashboard data loaded:', {
           user: userData,
-          timeEntries: timeEntries.length,
-          applications: applications.length
+          timeEntries: timeEntries.length
         });
 
         // Set user data
         setUser(userData);
         
-        // Set applications data
-        setApplications(applications);
+        // Set detected OS for debugging
+        setDetectedOS(detectedOS);
+
+        // Choose applications source
+        let appsForCalc: Application[] = [];
+        if (BYPASS_DB_APPS) {
+          // Bypass DB apps: use detected processes as applications (temporary)
+          // const dbApplications = await invoke('get_my_applications') as Application[]; // original code
+          type DetectedProcess = { name: string; process_name: string };
+          const detected = await invoke<DetectedProcess[]>('get_running_processes');
+          appsForCalc = detected.map((p, idx) => ({
+            id: `detected-${idx}`,
+            name: p.name || p.process_name,
+            process_name: p.process_name,
+            category: undefined,
+            icon_path: undefined,
+            is_tracked: true,
+            user_id: 'local',
+            created_at: undefined,
+            updated_at: undefined,
+            last_used: undefined,
+          }));
+        } else {
+          // Use registered apps from DB
+          const dbApplications = await invoke('get_my_applications') as Application[];
+          appsForCalc = dbApplications;
+        }
+
+        // Set applications in local state
+        setApplications(appsForCalc);
 
         // Update global cache
         updateCache({
-          applications: applications,
+          applications: appsForCalc,
           timeEntries: timeEntries,
           dataCacheTimestamp: Date.now()
         });
@@ -771,8 +819,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
         });
 
         // Calculate table data based on selected time period
-        const aggregatedData = aggregateTimeByApplication(timeEntries, applications, selectedTimePeriod);
-        console.log('🚀 Initial aggregation result:', aggregatedData);
+        const aggregatedData = aggregateTimeByApplication(timeEntries, appsForCalc, selectedTimePeriod);
         setApplicationTimeData(aggregatedData);
 
         // Calculate category data for pie chart
@@ -790,7 +837,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
         }
 
         // Calculate most used app for the past week
-        const mostUsedAppData = findMostUsedApp(timeEntries, applications);
+        const mostUsedAppData = findMostUsedApp(timeEntries, appsForCalc);
         setMostUsedApp(mostUsedAppData);
 
         // Update cache with calculated data
@@ -916,6 +963,20 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
           <div className="dashboard-page-container">
             <div className="dashboard-header">
               <h1>Welcome, {user?.name || 'User'}!</h1>
+              {/* OS Detection Debug Indicator */}
+              <div style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                background: '#f0f0f0',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                fontSize: '12px',
+                color: '#666',
+                border: '1px solid #ddd'
+              }}>
+                🖥️ OS: {detectedOS}
+              </div>
             </div>
             
             {error && (

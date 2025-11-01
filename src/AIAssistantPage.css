@@ -4,7 +4,7 @@
   display: flex;
   height: 100vh;
   width: 100vw;
-  background: #f5f5f5 !important;
+  background: var(--bg) !important;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
@@ -19,9 +19,9 @@
 
 /* AI Assistant Page Container - White container with rounded edges */
 .ai-assistant-page-container {
-  background: white;
+  background: var(--surface);
   border-radius: 12px;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -38,7 +38,7 @@
 }
 
 .ai-assistant-header h1 {
-  color: #1d1d1f;
+  color: var(--text);
   margin: 0;
   font-size: 24px;
   font-weight: 600;
@@ -72,6 +72,34 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+/* Welcome Screen */
+.welcome-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.welcome-content {
+  text-align: center;
+  max-width: 500px;
+}
+
+.welcome-content h2 {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 1rem;
+}
+
+.welcome-content p {
+  font-size: 1rem;
+  color: var(--text-muted);
+  line-height: 1.6;
 }
 
 .messages-container {
@@ -216,6 +244,9 @@
   padding: 20px 24px;
   background: transparent;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .input-wrapper {
@@ -261,7 +292,7 @@
 }
 
 .message-input::placeholder {
-  color: rgba(0, 0, 0, 0.4);
+  color: var(--text-muted);
   font-weight: 400;
 }
 
@@ -302,6 +333,370 @@
 }
 
 
+/* Quick Actions */
+.quick-actions-container {
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.quick-actions-container.top-actions {
+  border-bottom: 1px solid var(--border);
+}
+
+.quick-actions-container.bottom-actions {
+  border-bottom: none;
+  border-top: none;
+  padding: 1rem 0 0 0;
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+  width: 100%;
+}
+
+.quick-actions-buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.quick-action-btn {
+  padding: 0.5rem 1rem;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.quick-action-btn:hover:not(:disabled) {
+  background: #007AFF;
+  color: white;
+  border-color: #007AFF;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.quick-action-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.quick-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* AI Component Styles */
+.message-components {
+  margin-top: 0.5rem;
+  margin-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tool-component-wrapper {
+  margin-top: 0;
+  margin-left: 0;
+}
+
+.ai-component {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem 1.5rem 1.5rem 1rem; /* Left padding matches .message-text left padding (1rem) */
+  margin-top: 0;
+  margin-left: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ai-component h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.component-loading {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* App Usage Breakdown */
+.app-usage-breakdown {
+}
+
+.simple-pie-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.app-item {
+  padding: 0.5rem;
+  border-radius: 6px;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.simple-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bar-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+}
+
+.bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bar-container {
+  flex: 1;
+  height: 28px;
+  background: #f0f0f0;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 14px;
+  transition: width 0.3s ease;
+  min-width: 4px;
+}
+
+.bar-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 60px;
+  text-align: right;
+}
+
+/* Time Stats */
+.time-stats {
+}
+
+.stat-card-large {
+  background: linear-gradient(135deg, #007AFF 0%, #0056CC 100%);
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  color: white;
+  margin-bottom: 1rem;
+}
+
+.stat-card-large .stat-value {
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.stat-card-large .stat-label {
+  font-size: 1rem;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.stats-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.stat-label-small {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.stat-value-small {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Task Status */
+.task-status {
+}
+
+.task-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.task-stat-card {
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.task-stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #007AFF;
+  margin-bottom: 0.25rem;
+}
+
+.task-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.completion-progress {
+  margin-top: 1rem;
+}
+
+.progress-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e5e5e5;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #007AFF 0%, #48C9B0 100%);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.progress-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+}
+
+/* Peak Hours */
+.peak-hours {
+}
+
+.peak-hours-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.peak-hour-badge {
+  background: linear-gradient(135deg, #48C9B0 0%, #007AFF 100%);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.peak-hours-note {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0;
+  font-style: italic;
+}
+
+/* Stats Summary */
+.stats-summary {
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.stat-card {
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.stat-icon {
+  font-size: 2rem;
+}
+
+.stat-info {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Unknown Component */
+.ai-component.unknown {
+  background: #fff3cd;
+  border-color: #ffc107;
+}
+
+.ai-component.unknown pre {
+  background: white;
+  padding: 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  margin-top: 0.5rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .ai-assistant-header {
@@ -310,6 +705,19 @@
   
   .ai-assistant-header h1 {
     font-size: 20px;
+  }
+
+  .quick-actions-container {
+    padding: 0.75rem 1rem;
+  }
+
+  .quick-actions-buttons {
+    gap: 0.5rem;
+  }
+
+  .quick-action-btn {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.75rem;
   }
   
   .messages-container {

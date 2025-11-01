@@ -1,4 +1,6 @@
 use crate::database::{Database, TimeEntry, Application};
+use crate::default_user::get_default_user_id;
+use crate::tracking::cross_platform_tracker::CrossPlatformTracker;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -109,6 +111,9 @@ fn is_system_process(name: &str) -> bool {
     
     system_processes.iter().any(|&sys_proc| name.eq_ignore_ascii_case(sys_proc))
 }
+
+// Cross-platform tracker module
+pub mod cross_platform_tracker;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CurrentActivity {
@@ -665,15 +670,15 @@ impl ActivityTracker {
 }
 
 // Global tracker instance
-static mut TRACKER: Option<ActivityTracker> = None;
+static mut TRACKER: Option<CrossPlatformTracker> = None;
 
 pub fn init_tracker(db: Database) {
     unsafe {
-        TRACKER = Some(ActivityTracker::new(db));
+        TRACKER = Some(CrossPlatformTracker::new(db));
     }
 }
 
-pub fn get_tracker() -> Option<&'static ActivityTracker> {
+pub fn get_tracker() -> Option<&'static CrossPlatformTracker> {
     unsafe {
         TRACKER.as_ref()
     }
@@ -741,4 +746,10 @@ pub async fn stop_tracking_for_app_by_id(app_id: String) -> Result<(), String> {
     } else {
         Err("Activity tracker not initialized".to_string())
     }
+}
+
+#[tauri::command]
+pub async fn get_detected_os() -> Result<String, String> {
+    let os = crate::platform::detect_os();
+    Ok(format!("{:?}", os))
 }

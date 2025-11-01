@@ -1,0 +1,3 @@
+/* Dark mode variables are defined in Dashboard.css.
+   Keep this file minimal so theming is centralized. */
+:root[data-theme="dark"] { color-scheme: dark; }

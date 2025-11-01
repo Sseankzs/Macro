@@ -260,6 +260,84 @@ CREATE POLICY "Users can manage own time entries" ON time_entries
     FOR ALL USING (user_id::text = auth.uid()::text);
 ```
 
+## Encrypted Tasks Prototype: Team Key Storage
+
+This app includes a prototype for end‑to‑end encryption (E2EE) of task titles and descriptions. To let teammates decrypt, we store a single team key (wrapped with a shared passphrase) in a small helper table.
+
+Human‑language overview:
+- Each team gets a Team Key (random 256‑bit key) used to encrypt task fields client‑side with AES‑GCM.
+- The Team Key itself is encrypted ("wrapped") with a passphrase‑derived key (PBKDF2‑AES‑GCM) and saved in Supabase.
+- On first use, the creator enters a passphrase and saves the wrapped key. Teammates can enter the same passphrase to unwrap locally and read tasks.
+- This is a prototype: it’s simple, useful for demos, and can be upgraded later to per‑user key shares without changing task data.
+
+### Table: team_keys
+
+What it stores:
+- `team_id`: which team this key belongs to
+- `key_id`: version or label for the team key (e.g., `v1`)
+- `wrapped_key_b64`: the Team Key encrypted with PBKDF2‑AES‑GCM (base64)
+- `kdf_salt_b64`: random salt used for PBKDF2 (base64)
+- `kdf_iters`: PBKDF2 iterations (e.g., 150000)
+- `wrap_iv_b64`: AES‑GCM IV used when wrapping the Team Key (base64)
+- timestamps for bookkeeping
+
+SQL to create the table:
+
+```sql
+CREATE TABLE IF NOT EXISTS team_keys (
+  team_id TEXT NOT NULL,
+  key_id TEXT NOT NULL,
+  wrapped_key_b64 TEXT NOT NULL,
+  kdf_salt_b64 TEXT,
+  kdf_iters INT,
+  wrap_iv_b64 TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (team_id, key_id)
+);
+```
+
+Enable RLS and add simple policies so only team members can read/write their team’s key record:
+
+```sql
+ALTER TABLE team_keys ENABLE ROW LEVEL SECURITY;
+
+-- Team members can read their team key record(s)
+CREATE POLICY "Team members can read team key" ON team_keys
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id::text = auth.uid()::text
+        AND u.team_id = team_keys.team_id
+    )
+  );
+
+-- Team members can insert/update their team key record(s)
+CREATE POLICY "Team members can upsert team key" ON team_keys
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id::text = auth.uid()::text
+        AND u.team_id = team_keys.team_id
+    )
+  );
+
+CREATE POLICY "Team members can update team key" ON team_keys
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id::text = auth.uid()::text
+        AND u.team_id = team_keys.team_id
+    )
+  );
+```
+
+Notes and tips:
+- This is a prototype: it uses a shared passphrase instead of per‑user public keys. It is fine for demos and internal testing.
+- If you expect a lot of churn in team membership, plan to rotate `key_id` (generate a new Team Key). You can keep old records for history.
+- AES‑GCM already detects tampering; do not truncate the stored values.
+- If you don’t want to create this table yet, the app will fall back to a local (device‑only) team key and still work; teammates won’t be able to decrypt until a team key is saved.
+
 ## Available Tauri Commands
 
 The backend now provides the following commands organized by entity:

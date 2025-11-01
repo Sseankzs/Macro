@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './AddTaskModal.css';
 import { invoke } from '@tauri-apps/api/core';
+import { E2EE_TASKS } from './config';
+import { encryptTextForTeam } from './crypto/e2ee';
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -126,11 +128,15 @@ function AddTaskModal({ isOpen, onClose, onTaskAdded }: AddTaskModalProps) {
         const backendStatus = formData.status === 'Todo' ? 'todo' : 
                              formData.status === 'InProgress' ? 'in_progress' : 'done';
         
+        // Encrypt payload if enabled (prototype: single local team key)
+        const encTitle = E2EE_TASKS ? await encryptTextForTeam(formData.title.trim()) : formData.title.trim();
+        const encDescription = E2EE_TASKS && formData.description ? await encryptTextForTeam(formData.description.trim()) : (formData.description.trim() || null);
+
         const newTask = await invoke('create_task', {
-          title: formData.title.trim(),
+          title: encTitle,
           projectId: projectId, // Tauri will convert this to project_id
           assigneeId: formData.assigneeId || null, // Tauri will convert this to assignee_id
-          description: formData.description.trim() || null,
+          description: encDescription,
           status: backendStatus,
           priority: formData.priority.toLowerCase(),
           dueDate: formData.dueDate || null // Tauri will convert this to due_date

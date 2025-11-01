@@ -4,9 +4,11 @@ mod current_user;
 mod database;
 mod default_user;
 mod tracking;
+mod platform;
+mod ai;
 
 use commands::*;
-use tracking::{start_activity_tracking, stop_activity_tracking, update_activity, get_current_activity, get_active_applications_count, stop_tracking_for_app, stop_tracking_for_app_by_id};
+use tracking::{start_activity_tracking, stop_activity_tracking, update_activity, get_current_activity, get_active_applications_count, stop_tracking_for_app, stop_tracking_for_app_by_id, get_detected_os};
 use tauri::{Listener, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -141,11 +143,18 @@ pub fn run() {
             get_active_applications_count,
             stop_tracking_for_app,
             stop_tracking_for_app_by_id,
+            get_detected_os,
             // Utility commands
             test_database_connection,
             initialize_database_and_login,
             sign_up_user,
             logout_user,
+            // E2EE team key helpers (prototype)
+            get_team_key_record,
+            upsert_team_key_record,
+            // AI Assistant commands
+            get_productivity_insights,
+            ai_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

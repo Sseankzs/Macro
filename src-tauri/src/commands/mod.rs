@@ -1,3 +1,5 @@
+mod ai_assistant;
+
 use crate::database::{
     Application, Database, Project, Task, Team, TimeEntry, User,
 };
@@ -5,6 +7,10 @@ use crate::default_user::{get_default_user, get_default_user_id};
 use serde_json::json;
 use tauri::{State, Manager};
 use regex;
+use ai_assistant::*;
+
+// Re-export AI assistant commands for use in lib.rs
+pub use ai_assistant::get_productivity_insights;
 
 // Helper function to generate UUID strings
 fn generate_id() -> String {
@@ -1292,16 +1298,107 @@ pub struct DetectedProcess {
     pub last_seen: String,
 }
 
+// Link AppKit when compiling for macOS so we can use NSWorkspace
+#[cfg(target_os = "macos")]
+#[link(name = "AppKit", kind = "framework")]
+extern "C" {}
+
 #[tauri::command]
 pub async fn get_running_processes() -> Result<Vec<DetectedProcess>, String> {
+    // macOS: use NSWorkspace.runningApplications to list real user apps
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use objc::{class, msg_send, sel, sel_impl};
+        use objc::runtime::Object;
+        use std::ffi::CStr;
+        use std::os::raw::c_char;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let mut results: Vec<DetectedProcess> = Vec::new();
+
+        let ws: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if ws.is_null() {
+            // Fallback to sysinfo
+            return get_running_processes_fallback().await;
+        }
+
+        let apps_array: *mut Object = msg_send![ws, runningApplications];
+        if apps_array.is_null() {
+            return get_running_processes_fallback().await;
+        }
+
+        // NSArray count
+        let count: usize = msg_send![apps_array, count];
+        for i in 0..count {
+            let app: *mut Object = msg_send![apps_array, objectAtIndex: i];
+            if app.is_null() { continue; }
+
+            // Only include regular (Dock) apps
+            // NSApplicationActivationPolicyRegular == 0
+            let activation_policy: i64 = msg_send![app, activationPolicy];
+            if activation_policy != 0 { continue; }
+
+            // Name
+            let name_ns: *mut Object = msg_send![app, localizedName];
+            if name_ns.is_null() { continue; }
+            let name_ptr: *const c_char = msg_send![name_ns, UTF8String];
+            if name_ptr.is_null() { continue; }
+            let name = CStr::from_ptr(name_ptr).to_string_lossy().into_owned();
+
+            // Bundle identifier (use as process_name fallback)
+            let bundle_ns: *mut Object = msg_send![app, bundleIdentifier];
+            let process_name = if bundle_ns.is_null() {
+                name.clone()
+            } else {
+                let bid_ptr: *const c_char = msg_send![bundle_ns, UTF8String];
+                if bid_ptr.is_null() { name.clone() } else { CStr::from_ptr(bid_ptr).to_string_lossy().into_owned() }
+            };
+
+            // Active
+            let is_active: bool = msg_send![app, isActive];
+
+            // Path
+            let bundle_url: *mut Object = msg_send![app, bundleURL];
+            let directory = if bundle_url.is_null() {
+                None
+            } else {
+                let path_ns: *mut Object = msg_send![bundle_url, path];
+                if path_ns.is_null() { None } else {
+                    let path_ptr: *const c_char = msg_send![path_ns, UTF8String];
+                    if path_ptr.is_null() { None } else { Some(CStr::from_ptr(path_ptr).to_string_lossy().into_owned()) }
+                }
+            };
+
+            results.push(DetectedProcess {
+                name,
+                process_name,
+                window_title: None,
+                directory,
+                is_active,
+                last_seen: now.clone(),
+            });
+        }
+
+        // Sort active first, then by name
+        results.sort_by(|a, b| b.is_active.cmp(&a.is_active).then(a.name.cmp(&b.name)));
+        // Limit
+        results.truncate(50);
+        return Ok(results);
+    }
+
+    // Other platforms: fallback to sysinfo with simple filtering (Windows-focused)
+    get_running_processes_fallback().await
+}
+
+async fn get_running_processes_fallback() -> Result<Vec<DetectedProcess>, String> {
     let mut system = System::new_all();
     system.refresh_all();
-    
+
     let mut processes = Vec::new();
     let mut seen_processes = std::collections::HashSet::new();
     let now = chrono::Utc::now().to_rfc3339();
-    
-    // Common background/system processes to filter out
+
+    // Background/system processes list (mostly Windows); macOS path uses NSWorkspace
     let background_processes = [
         "svchost.exe", "dwm.exe", "winlogon.exe", "csrss.exe", "smss.exe",
         "wininit.exe", "services.exe", "lsass.exe", "conhost.exe",
@@ -1314,18 +1411,16 @@ pub async fn get_running_processes() -> Result<Vec<DetectedProcess>, String> {
         "taskhostw.exe", "sihost.exe", "ctfmon.exe", "WmiPrvSE.exe", "SearchIndexer.exe",
         "SearchProtocolHost.exe", "SearchFilterHost.exe", "RuntimeBroker.exe"
     ];
-    
+
     for (_pid, process) in system.processes() {
         let process_name = process.name();
         let exe_name = process.exe().and_then(|p| p.file_name()).unwrap_or_default();
-        
+
         // Skip background/system processes
-        if background_processes.contains(&process_name) || 
+        if background_processes.contains(&process_name) ||
            background_processes.contains(&exe_name.to_string_lossy().as_ref()) ||
-           process_name.len() < 3 || // Skip very short process names
-           process_name.contains("Windows") ||
-           process_name.contains("Microsoft") ||
-           process_name.starts_with(".") ||
+           process_name.len() < 3 ||
+           process_name.starts_with('.') ||
            process_name.contains("Service") ||
            process_name.contains("Host") ||
            process_name.contains("Helper") ||
@@ -1335,38 +1430,108 @@ pub async fn get_running_processes() -> Result<Vec<DetectedProcess>, String> {
            process_name.contains("Background") {
             continue;
         }
-        
-        // Skip if we've already seen this process name (avoid duplicates)
-        if seen_processes.contains(process_name) {
-            continue;
-        }
+
+        if seen_processes.contains(process_name) { continue; }
         seen_processes.insert(process_name.to_string());
-        
-        // Determine if process is "active" based on known patterns and additional criteria
+
         let is_active = is_known_user_app(process_name) || is_likely_user_app(process_name, &process);
-        
+
         let detected_process = DetectedProcess {
             name: get_friendly_name(process_name),
             process_name: process_name.to_string(),
-            window_title: None, // Could be enhanced with window 
+            window_title: None,
             directory: process.exe().map(|p| p.to_string_lossy().to_string()),
             is_active,
             last_seen: now.clone(),
         };
-        
+
         processes.push(detected_process);
     }
-    
-    // Sort by active status (active first), then alphabetically
-    processes.sort_by(|a, b| {
-        b.is_active.cmp(&a.is_active)
-            .then(a.name.cmp(&b.name))
-    });
-    
-    // Limit to top 30 processes to avoid overwhelming the UI
+
+    processes.sort_by(|a, b| b.is_active.cmp(&a.is_active).then(a.name.cmp(&b.name)));
     processes.truncate(30);
-    
     Ok(processes)
+}
+
+// ===== TEAM KEY STORAGE (Prototype) =====
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TeamKeyRecord {
+    pub team_id: String,
+    pub key_id: String,
+    pub wrapped_key_b64: String,
+    pub kdf_salt_b64: Option<String>,
+    pub kdf_iters: Option<i32>,
+    pub wrap_iv_b64: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_team_key_record(db: State<'_, Database>, team_id: String) -> Result<Option<TeamKeyRecord>, String> {
+    let url = format!("{}/rest/v1/team_keys?team_id=eq.{}&order=created_at.desc&limit=1", db.base_url, team_id);
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch team key: {}", e))?;
+
+    if response.status().is_success() {
+        let rows: Vec<TeamKeyRecord> = response.json().await
+            .map_err(|e| format!("Failed to parse team key: {}", e))?;
+        Ok(rows.into_iter().next())
+    } else if response.status().as_u16() == 404 {
+        Ok(None)
+    } else {
+        let status = response.status();
+        let err = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!("HTTP {}: {}", status, err))
+    }
+}
+
+#[tauri::command]
+pub async fn upsert_team_key_record(
+    db: State<'_, Database>,
+    team_id: String,
+    key_id: String,
+    wrapped_key_b64: String,
+    kdf_salt_b64: Option<String>,
+    kdf_iters: Option<i32>,
+    wrap_iv_b64: Option<String>,
+) -> Result<TeamKeyRecord, String> {
+    let payload = serde_json::json!({
+        "team_id": team_id,
+        "key_id": key_id,
+        "wrapped_key_b64": wrapped_key_b64,
+        "kdf_salt_b64": kdf_salt_b64,
+        "kdf_iters": kdf_iters,
+        "wrap_iv_b64": wrap_iv_b64,
+        "created_at": chrono::Utc::now().to_rfc3339(),
+        "updated_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    let response = db.client
+        .post(&format!("{}/rest/v1/team_keys", db.base_url))
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=representation")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to upsert team key: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let err = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("HTTP {}: {}", status, err));
+    }
+
+    let rows: Vec<TeamKeyRecord> = response.json().await
+        .map_err(|e| format!("Failed to parse team key response: {}", e))?;
+    rows.into_iter().next().ok_or_else(|| "No team key returned".to_string())
 }
 
 fn is_known_user_app(process_name: &str) -> bool {
@@ -1572,4 +1737,111 @@ pub async fn logout_user() -> Result<bool, String> {
 
     println!("🎉 logout_user() completed successfully");
     Ok(true)
+}
+
+// ===== AI ASSISTANT COMMANDS =====
+
+#[tauri::command]
+pub async fn ai_chat(
+    message: String,
+    conversation_history: Vec<ai_assistant::ChatMessage>,
+) -> Result<crate::ai::AIResponse, String> {
+    use crate::ai::{AIService, GeminiService, ChatMessage as AIChatMessage};
+    
+    // Get productivity insights as context
+    let insights = match get_productivity_insights_for_context().await {
+        Ok(insights) => format_productivity_context(&insights),
+        Err(_) => String::new(), // Continue without context if fetch fails
+    };
+    
+    // Initialize AI service (Gemini)
+    let ai_service = GeminiService::new()
+        .map_err(|e| format!("Failed to initialize AI service: {}", e))?;
+    
+    // Build messages with system prompt
+    let mut messages = vec![
+        AIChatMessage {
+            role: "system".to_string(),
+            content: "You are a helpful productivity assistant and secretary for a time tracking application. You help users understand their work patterns, time tracking data, task management, and productivity insights. Be concise, helpful, and data-driven in your responses.".to_string(),
+        },
+    ];
+    
+    // Add context if available
+    if !insights.is_empty() {
+        messages.push(AIChatMessage {
+            role: "system".to_string(),
+            content: format!("User's current productivity data:\n{}", insights),
+        });
+    }
+    
+    // Convert conversation history to AI ChatMessage format
+    let ai_conversation_history: Vec<AIChatMessage> = conversation_history
+        .into_iter()
+        .map(|msg| AIChatMessage {
+            role: msg.role,
+            content: msg.content,
+        })
+        .collect();
+    
+    // Add conversation history
+    messages.extend(ai_conversation_history);
+    
+    // Add current user message
+    messages.push(AIChatMessage {
+        role: "user".to_string(),
+        content: message,
+    });
+    
+    // Call AI service
+    let response = ai_service
+        .chat(messages)
+        .await
+        .map_err(|e| format!("AI service error: {}", e))?;
+    
+    Ok(response)
+}
+
+async fn get_productivity_insights_for_context() -> Result<ProductivityInsights, String> {
+    // For context generation, we'll use mock data for now
+    // The actual get_productivity_insights command will be called from frontend
+    Ok(ai_assistant::get_mock_productivity_insights())
+}
+
+fn format_productivity_context(insights: &ProductivityInsights) -> String {
+    let mut context = String::new();
+    
+    context.push_str(&format!("Today's time tracked: {:.1} hours\n", insights.total_time_today));
+    context.push_str(&format!("This week's time tracked: {:.1} hours\n", insights.total_time_this_week));
+    context.push_str(&format!("This month's time tracked: {:.1} hours\n\n", insights.total_time_this_month));
+    
+    if !insights.most_used_apps.is_empty() {
+        context.push_str("Most used apps:\n");
+        for app in &insights.most_used_apps {
+            context.push_str(&format!("- {}: {:.1} hours ({:.1}%)\n", app.app_name, app.hours, app.percentage));
+        }
+        context.push_str("\n");
+    }
+    
+    if let Some(activity) = &insights.current_activity {
+        context.push_str(&format!("Current activity: {} ({} minutes active)\n\n", 
+            activity.app_name, activity.duration_seconds / 60));
+    }
+    
+    context.push_str(&format!("Tasks: {} total ({} todo, {} in progress, {} done, {:.1}% completion rate)\n\n",
+        insights.task_stats.total,
+        insights.task_stats.todo,
+        insights.task_stats.in_progress,
+        insights.task_stats.done,
+        insights.task_stats.completion_rate,
+    ));
+    
+    if !insights.productivity_trend.peak_hours.is_empty() {
+        let peak_hours_str: Vec<String> = insights.productivity_trend.peak_hours
+            .iter()
+            .map(|h| format!("{}:00", h))
+            .collect();
+        context.push_str(&format!("Peak productivity hours: {}\n", peak_hours_str.join(", ")));
+    }
+    
+    context
 }

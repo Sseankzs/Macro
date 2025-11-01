@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import { invoke } from '@tauri-apps/api/core';
 import { formatForTable } from './utils';
 import { useDashboardCache } from './contexts/DashboardCacheContext';
+import { BYPASS_DB_APPS } from './config';
 
 interface App {
   id: string;
@@ -34,6 +35,7 @@ interface RegisterAppsPageProps {
 }
 
 function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
+  // Controlled via env flag in src/config.ts
   const [apps, setApps] = useState<App[]>([]);
   const [isLoadingApps, setIsLoadingApps] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,32 +74,31 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   // Fetch apps from database with comprehensive error handling
   const fetchApps = async () => {
     try {
-      console.log('📱 Fetching user apps from database...');
       setIsLoadingApps(true);
       setError(null);
-      
-      const apps = await invoke<App[]>('get_my_applications');
-      console.log('✅ Successfully fetched apps:', apps);
-      console.log('📱 App is_tracked values:', apps.map(app => ({ name: app.name, is_tracked: app.is_tracked, type: typeof app.is_tracked })));
-      setApps(apps);
+
+      if (BYPASS_DB_APPS) {
+        // Use detected processes as apps (temporary bypass)
+        type DetectedProcess = { name: string; process_name: string };
+        const detected = await invoke<DetectedProcess[]>('get_running_processes');
+        const mapped: App[] = detected.map((p, idx) => ({
+          id: `detected-${idx}`,
+          name: p.name || p.process_name,
+          process_name: p.process_name,
+          user_id: 'local',
+          is_tracked: true,
+        }));
+        setApps(mapped);
+      } else {
+        console.log('📱 Fetching user apps from database...');
+        const apps = await invoke<App[]>('get_my_applications');
+        console.log('✅ Successfully fetched apps:', apps);
+        setApps(apps);
+      }
     } catch (error) {
       console.error('❌ Failed to fetch apps:', error);
-      
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // Analyze error for RLS issues
-      if (errorMessage.includes('42501') || errorMessage.includes('row-level security')) {
-        const rlsError = 'RLS Policy Error: User may not exist or lacks permissions to read applications table.';
-        setRlsErrors(prev => [...prev, rlsError]);
-        setError(`RLS Error: ${rlsError}`);
-      } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-        const authError = 'Authentication Error: Invalid Supabase credentials or API key.';
-        setRlsErrors(prev => [...prev, authError]);
-        setError(`Auth Error: ${authError}`);
-      } else {
-        setError(`Failed to load applications: ${errorMessage}`);
-      }
-      
+      setError(`Failed to load applications: ${errorMessage}`);
       setApps([]);
     } finally {
       setIsLoadingApps(false);
@@ -165,6 +166,12 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   }, [showDropdown]);
 
   const handleToggleApp = async (appId: string) => {
+    if (BYPASS_DB_APPS) {
+      // Local toggle only
+      setApps(prev => prev.map(a => a.id === appId ? { ...a, is_tracked: !(a.is_tracked ?? false) } : a));
+      setError(null);
+      return;
+    }
     try {
       console.log('🔄 Toggling app:', appId);
       
@@ -305,6 +312,12 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   };
 
   const handleDeleteApp = async (appId: string) => {
+    if (BYPASS_DB_APPS) {
+      // Local delete only
+      setApps(prev => prev.filter(a => a.id !== appId));
+      setError(null);
+      return;
+    }
     try {
       console.log('🗑️ Deleting app:', appId);
       
@@ -402,6 +415,25 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   };
 
   const handleAddFromDropdown = async (detectedApp: DetectedApp) => {
+    if (BYPASS_DB_APPS) {
+      // Add to local list only
+      const isAlreadyRegistered = apps.some(app => app.name === detectedApp.name);
+      if (isAlreadyRegistered) {
+        setError(`App "${detectedApp.name}" is already registered.`);
+        return;
+      }
+      const newApp: App = {
+        id: `detected-${apps.length}`,
+        name: detectedApp.name,
+        process_name: detectedApp.process_name,
+        user_id: 'local',
+        is_tracked: true,
+      };
+      setApps(prev => [...prev, newApp]);
+      setShowDropdown(false);
+      setError(null);
+      return;
+    }
     try {
       console.log('➕ Adding app from dropdown:', {
         name: detectedApp.name,

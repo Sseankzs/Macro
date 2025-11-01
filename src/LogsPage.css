@@ -3,7 +3,7 @@
   display: flex;
   height: 100vh;
   width: 100vw;
-  background: #f5f5f5;
+  background: var(--bg);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
@@ -18,9 +18,9 @@
 
 /* Logs Container - White container with rounded edges */
 .logs-container {
-  background: white;
+  background: var(--surface);
   border-radius: 12px;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -36,7 +36,7 @@
 }
 
 .logs-header h1 {
-  color: #1d1d1f;
+  color: var(--text);
   margin: 0;
   font-size: 24px;
   font-weight: 600;
@@ -68,9 +68,9 @@
 }
 
 .btn-secondary {
-  background: #f8f9fa;
-  color: #495057;
-  border: 2px solid #e2e8f0;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 2px solid var(--border);
   padding: 0.75rem 1.5rem;
   border-radius: 8px;
   font-weight: 600;
@@ -79,7 +79,7 @@
 }
 
 .btn-secondary:hover {
-  background: #e9ecef;
+  background: var(--surface);
   transform: translateY(-1px);
 }
 
@@ -121,24 +121,24 @@
 
 .filter-group label {
   font-weight: 600;
-  color: #374151;
+  color: var(--text);
   font-size: 0.875rem;
 }
 
 .filter-select {
   padding: 0.5rem 0.75rem;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--border);
   border-radius: 8px;
-  background: white;
+  background: var(--surface);
   font-size: 0.875rem;
-  color: #374151;
+  color: var(--text);
   transition: all 0.2s ease;
   min-width: 120px;
 }
 
 .filter-select:focus {
   outline: none;
-  border-color: #6c757d;
+  border-color: var(--accent);
 }
 
 .search-controls {
@@ -148,35 +148,35 @@
 
 .search-input {
   padding: 0.5rem 0.75rem;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--border);
   border-radius: 8px;
-  background: white;
+  background: var(--surface);
   font-size: 0.875rem;
-  color: #374151;
+  color: var(--text);
   transition: all 0.2s ease;
   min-width: 200px;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #6c757d;
+  border-color: var(--accent);
 }
 
 .results-summary {
-  background: #f8f9fa;
+  background: var(--input-bg);
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.5rem;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.875rem;
   font-weight: 500;
 }
 
 .logs-table-container {
-  background: white;
+  background: var(--surface);
   border-radius: 8px;
   overflow: visible;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--border);
   margin-bottom: 1rem;
   flex-shrink: 0;
 }
@@ -189,8 +189,8 @@
 }
 
 .logs-table thead {
-  background: #f8f9fa;
-  color: #374151;
+  background: var(--input-bg);
+  color: var(--text);
 }
 
 .logs-table th {
@@ -208,7 +208,7 @@
 }
 
 .logs-table tbody tr:hover {
-  background: #f8f9fa;
+  background: var(--input-bg);
 }
 
 .logs-table tbody tr.active-entry {
@@ -235,14 +235,14 @@
 
 .app-name {
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text);
   font-size: 0.875rem;
 }
 
 .app-category {
   font-size: 0.75rem;
-  color: #6b7280;
-  background: #f3f4f6;
+  color: var(--text-muted);
+  background: var(--input-bg);
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   width: fit-content;
@@ -251,14 +251,14 @@
 .time-cell {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.8rem;
-  color: #374151;
-  min-width: 130px;
+  color: var(--text);
+  min-width: 150px;
 }
 
 .start-time-cell {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.8rem;
-  color: #374151;
+  color: var(--text);
   min-width: 120px;
   text-align: center;
   font-weight: bold;
@@ -267,7 +267,7 @@
 .end-time-cell {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.8rem;
-  color: #374151;
+  color: var(--text);
   min-width: 120px;
   text-align: center;
   font-weight: bold;
@@ -275,7 +275,7 @@
 
 .duration-cell {
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text);
   min-width: 100px;
   text-align: center;
 }
@@ -321,18 +321,18 @@
 
 .pagination-btn {
   padding: 0.5rem 1rem;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--border);
   border-radius: 8px;
-  background: white;
-  color: #374151;
+  background: var(--surface);
+  color: var(--text);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  border-color: #cbd5e0;
-  color: #6c757d;
+  border-color: var(--accent);
+  color: var(--text-muted);
 }
 
 .pagination-btn:disabled {
@@ -341,7 +341,7 @@
 }
 
 .pagination-info {
-  color: #6b7280;
+  color: var(--text-muted);
   font-weight: 500;
   font-size: 0.875rem;
 }
@@ -349,7 +349,7 @@
 .loading, .error {
   text-align: center;
   padding: 3rem;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 1rem;
 }
 
@@ -363,9 +363,9 @@
 .no-entries {
   text-align: center;
   padding: 3rem;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 1rem;
-  background: #f8f9fa;
+  background: var(--input-bg);
   border-radius: 8px;
   margin: 1rem 0;
 }

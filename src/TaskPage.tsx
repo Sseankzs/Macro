@@ -5,6 +5,8 @@ import AddTaskModal from './AddTaskModal';
 import TaskDetailModal from './TaskDetailModal';
 import { invoke } from '@tauri-apps/api/core';
 import { TasksSkeletonGrid } from './components/LoadingComponents';
+import { E2EE_TASKS } from './config';
+import { decryptTextForTeam, isEncrypted } from './crypto/e2ee';
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -67,6 +69,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [deleteTarget, setDeleteTarget] = useState<{type: 'task', id: string, title: string} | null>(null);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+  const [showE2EEHelp, setShowE2EEHelp] = useState(false);
 
   // Load all data from backend
   const loadAllData = async () => {
@@ -87,7 +90,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         console.log('========================');
 
         // Transform tasks with proper assignee names
-        const transformedTasks: Task[] = backendTasks.map(task => {
+        const transformedTasks: Task[] = await Promise.all(backendTasks.map(async (task) => {
           const assignee = backendMembers.find(member => member.id === task.assignee_id);
           
           // Convert backend status to frontend status
@@ -99,10 +102,16 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                                   task.priority === 'medium' ? 'Medium' :
                                   task.priority === 'high' ? 'High' : 'Medium';
           
+          // Decrypt fields if encrypted
+          const title = E2EE_TASKS && isEncrypted(task.title) ? await decryptTextForTeam(task.title) : task.title;
+          const description = E2EE_TASKS && task.description && isEncrypted(task.description) 
+            ? await decryptTextForTeam(task.description)
+            : (task.description || '');
+          
           return {
             id: task.id,
-            title: task.title,
-            description: task.description || '',
+            title,
+            description,
             project_id: task.project_id || '',
             assignee_id: task.assignee_id,
             status: frontendStatus,
@@ -113,7 +122,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             assignee_name: assignee?.name,
             project_name: 'Unassigned Project'
           };
-        });
+        }));
 
         console.log('=== FRONTEND TRANSFORMATION DEBUG ===');
         console.log('Transformed tasks:', JSON.stringify(transformedTasks, null, 2));
@@ -467,6 +476,44 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
               )}
             </div>
           </div>
+          {E2EE_TASKS && (
+            <div style={{
+              marginTop: 8,
+              marginBottom: 8,
+              padding: '10px 12px',
+              borderRadius: 10,
+              background: '#f5f7ff',
+              color: '#1f3a8a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12
+            }}>
+              <span role="img" aria-label="info">🔐</span>
+              <div style={{ flex: 1 }}>
+                <strong>Encryption is on.</strong> Task titles and descriptions are encrypted end‑to‑end.
+                <button
+                  onClick={() => setShowE2EEHelp(!showE2EEHelp)}
+                  style={{
+                    marginLeft: 8,
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#1d4ed8',
+                    cursor: 'pointer',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  {showE2EEHelp ? 'Hide details' : 'Learn more'}
+                </button>
+                {showE2EEHelp && (
+                  <div style={{ marginTop: 8, color: '#334155' }}>
+                    - You may see a passphrase prompt the first time; this lets teammates decrypt tasks.<br />
+                    - For this prototype, everyone on the team uses the same passphrase.<br />
+                    - To change the passphrase, an admin can reset the team key (e.g., remove the saved team key in Supabase and clear the local cache), then set a new passphrase. Do this only during testing — old encrypted tasks won’t be readable after a reset.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           
           {error && (
             <div className="error-message" style={{ 

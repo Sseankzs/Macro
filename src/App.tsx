@@ -11,6 +11,9 @@ import { DashboardCacheProvider } from './contexts/DashboardCacheContext'
 import { CurrentUserProvider } from './contexts/CurrentUserContext'
 import { invoke } from '@tauri-apps/api/core'
 import { supabase } from './lib/supabase'
+import './theme-dark.css'
+import { applyTheme, getInitialTheme } from './useTheme'
+import { BYPASS_LOGIN } from './config'
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -144,6 +147,105 @@ function App() {
     e.preventDefault()
     await handleSignUp(name, email, password)
   }
+  const handleSignUp = async (name: string, email: string, password: string) => {
+    try {
+      console.log('Sign up attempt:', { email })
+      
+      // Validate password confirmation
+      if (password !== confirmPassword) {
+        alert('Passwords do not match!')
+        return
+      }
+
+      if (password.length < 6) {
+        alert('Password must be at least 6 characters long!')
+        return
+      }
+      
+      if (isTauri()) {
+        // Running in Tauri desktop app - call backend sign_up_user which will create
+        // the auth user and insert the users table record (including provided name)
+        const success = await invoke<boolean>('sign_up_user', {
+          email,
+          password,
+          name
+        })
+
+        if (success) {
+          alert('Account created successfully! Please log in.')
+          setIsSignUp(false)
+          setEmail('')
+          setPassword('')
+          setConfirmPassword('')
+          setName('')
+        } else {
+          alert('Sign up failed on backend')
+        }
+      } else {
+        // Running in browser - development mode
+        console.log('Running in browser mode - simulating sign up')
+        alert('Account created successfully! Please log in.')
+        setIsSignUp(false)
+        setEmail('')
+        setPassword('')
+        setConfirmPassword('')
+        setName('')
+      }
+    } catch (error) {
+      console.error('Sign up error:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      alert(`Sign up failed: ${errorMessage}`)
+    }
+  }
+
+  const handleSignUpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await handleSignUp(name, email, password)
+  }
+
+  // Initialize theme early
+  useEffect(() => {
+    const initial = getInitialTheme();
+    applyTheme(initial);
+  }, []);
+
+  // Temporary login bypass - auto-login if BYPASS_LOGIN is enabled
+  useEffect(() => {
+    if (BYPASS_LOGIN && !isLoggedIn) {
+      console.log('🚀 BYPASS_LOGIN enabled - auto-logging in...');
+      const autoLogin = async () => {
+        try {
+          if (isTauri()) {
+            // Initialize database and bypass login in Tauri mode
+            // We use dummy credentials since login check is bypassed
+            const success = await invoke<boolean>('initialize_database_and_login', {
+              email: 'bypass@temp.com',
+              password: 'bypass'
+            });
+            
+            if (success) {
+              console.log('✅ Auto-login successful (bypassed)');
+              setIsLoggedIn(true);
+            } else {
+              console.warn('⚠️ Auto-login failed, but continuing anyway (bypass mode)');
+              setIsLoggedIn(true);
+            }
+          } else {
+            // Browser mode - just set logged in
+            console.log('✅ Auto-login enabled (browser mode)');
+            setIsLoggedIn(true);
+          }
+        } catch (error) {
+          // Even if initialization fails, we still bypass login in bypass mode
+          console.warn('⚠️ Auto-login encountered an error, but continuing anyway (bypass mode):', error);
+          setIsLoggedIn(true);
+        }
+      };
+      
+      autoLogin();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount if bypass is enabled
 
   // Start activity tracking when user logs in
   useEffect(() => {
