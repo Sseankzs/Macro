@@ -147,61 +147,6 @@ function App() {
     e.preventDefault()
     await handleSignUp(name, email, password)
   }
-  const handleSignUp = async (name: string, email: string, password: string) => {
-    try {
-      console.log('Sign up attempt:', { email })
-      
-      // Validate password confirmation
-      if (password !== confirmPassword) {
-        alert('Passwords do not match!')
-        return
-      }
-
-      if (password.length < 6) {
-        alert('Password must be at least 6 characters long!')
-        return
-      }
-      
-      if (isTauri()) {
-        // Running in Tauri desktop app - call backend sign_up_user which will create
-        // the auth user and insert the users table record (including provided name)
-        const success = await invoke<boolean>('sign_up_user', {
-          email,
-          password,
-          name
-        })
-
-        if (success) {
-          alert('Account created successfully! Please log in.')
-          setIsSignUp(false)
-          setEmail('')
-          setPassword('')
-          setConfirmPassword('')
-          setName('')
-        } else {
-          alert('Sign up failed on backend')
-        }
-      } else {
-        // Running in browser - development mode
-        console.log('Running in browser mode - simulating sign up')
-        alert('Account created successfully! Please log in.')
-        setIsSignUp(false)
-        setEmail('')
-        setPassword('')
-        setConfirmPassword('')
-        setName('')
-      }
-    } catch (error) {
-      console.error('Sign up error:', error)
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      alert(`Sign up failed: ${errorMessage}`)
-    }
-  }
-
-  const handleSignUpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    await handleSignUp(name, email, password)
-  }
 
   // Initialize theme early
   useEffect(() => {

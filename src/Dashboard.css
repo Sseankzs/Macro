@@ -278,6 +278,15 @@ input, select, textarea {
   font-weight: 400;
   opacity: 0.7;
   transition: opacity 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.nav-shortcut-modifier {
+  font-size: 1.15em;
+  line-height: 1;
+  font-weight: 500;
 }
 
 .nav-link:hover {

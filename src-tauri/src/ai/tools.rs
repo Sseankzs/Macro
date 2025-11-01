@@ -139,6 +139,74 @@ pub fn get_available_tools() -> Vec<ToolDefinition> {
                 required: vec![],
             },
         },
+        // Team management tools
+        ToolDefinition {
+            name: "show_team_overview".to_string(),
+            description: "Use this when the user (who is a team manager) asks for team overview, team summary, team stats, or wants to see high-level team metrics like active members, total hours, averages, and top performers.".to_string(),
+            parameters: ToolParameters {
+                r#type: "object".to_string(),
+                properties: serde_json::json!({
+                    "includeInactive": {
+                        "type": "boolean",
+                        "description": "Whether to include inactive team members in the overview"
+                    }
+                }),
+                required: vec![],
+            },
+        },
+        ToolDefinition {
+            name: "show_member_performance".to_string(),
+            description: "Use this when the user asks about a specific team member's performance, productivity, or stats. Use when questions mention '@username' or ask about individual team member data.".to_string(),
+            parameters: ToolParameters {
+                r#type: "object".to_string(),
+                properties: serde_json::json!({
+                    "member_id": {
+                        "type": "string",
+                        "description": "The ID of the team member to show performance for"
+                    },
+                    "period": {
+                        "type": "string",
+                        "enum": ["today", "week", "month"],
+                        "description": "Time period for the performance data"
+                    }
+                }),
+                required: vec!["member_id".to_string()],
+            },
+        },
+        ToolDefinition {
+            name: "show_team_member_comparison".to_string(),
+            description: "Use this when the user wants to compare team members' performance, see rankings, or compare productivity across the team. Shows side-by-side comparison of all team members.".to_string(),
+            parameters: ToolParameters {
+                r#type: "object".to_string(),
+                properties: serde_json::json!({
+                    "sortBy": {
+                        "type": "string",
+                        "enum": ["hours_today", "hours_week", "tasks_done", "completion_rate"],
+                        "description": "How to sort the comparison (default: hours_today)"
+                    },
+                    "includeInactive": {
+                        "type": "boolean",
+                        "description": "Whether to include inactive team members"
+                    }
+                }),
+                required: vec![],
+            },
+        },
+        ToolDefinition {
+            name: "show_team_insights".to_string(),
+            description: "Use this when the user asks for team insights, team recommendations, team improvement suggestions, or actionable advice about team productivity and management.".to_string(),
+            parameters: ToolParameters {
+                r#type: "object".to_string(),
+                properties: serde_json::json!({
+                    "focus": {
+                        "type": "string",
+                        "enum": ["productivity", "collaboration", "workload", "performance", "general"],
+                        "description": "Focus area for team insights"
+                    }
+                }),
+                required: vec![],
+            },
+        },
     ]
 }
 

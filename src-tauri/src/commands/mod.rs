@@ -1747,25 +1747,25 @@ pub async fn ai_chat(
     conversation_history: Vec<ai_assistant::ChatMessage>,
 ) -> Result<crate::ai::AIResponse, String> {
     use crate::ai::{AIService, GeminiService, ChatMessage as AIChatMessage};
-    
+
     // Get productivity insights as context
     let insights = match get_productivity_insights_for_context().await {
         Ok(insights) => format_productivity_context(&insights),
         Err(_) => String::new(), // Continue without context if fetch fails
     };
-    
+
     // Initialize AI service (Gemini)
     let ai_service = GeminiService::new()
         .map_err(|e| format!("Failed to initialize AI service: {}", e))?;
-    
+
     // Build messages with system prompt
     let mut messages = vec![
         AIChatMessage {
             role: "system".to_string(),
-            content: "You are a helpful productivity assistant and secretary for a time tracking application. You help users understand their work patterns, time tracking data, task management, and productivity insights. Be concise, helpful, and data-driven in your responses.".to_string(),
+            content: "You are a helpful productivity assistant and team management secretary for a time tracking application. You help both individual users and team managers understand work patterns, time tracking data, task management, and productivity insights. For team managers, you provide team-level analytics, member performance comparisons, and team management insights. When users mention '@username' or ask about team data, use the appropriate team-related tools. Be concise, helpful, and data-driven in your responses.".to_string(),
         },
     ];
-    
+
     // Add context if available
     if !insights.is_empty() {
         messages.push(AIChatMessage {
@@ -1773,7 +1773,7 @@ pub async fn ai_chat(
             content: format!("User's current productivity data:\n{}", insights),
         });
     }
-    
+
     // Convert conversation history to AI ChatMessage format
     let ai_conversation_history: Vec<AIChatMessage> = conversation_history
         .into_iter()
@@ -1782,22 +1782,41 @@ pub async fn ai_chat(
             content: msg.content,
         })
         .collect();
-    
+
     // Add conversation history
     messages.extend(ai_conversation_history);
-    
+
     // Add current user message
     messages.push(AIChatMessage {
         role: "user".to_string(),
         content: message,
     });
-    
+
     // Call AI service
-    let response = ai_service
+    let mut response = ai_service
         .chat(messages)
         .await
         .map_err(|e| format!("AI service error: {}", e))?;
-    
+
+    // If the AI called tools, execute them and replace the tool calls with structured data
+    if let Some(ref tool_calls) = response.tools {
+        let mut executed_tools = Vec::new();
+
+        for tool_call in tool_calls {
+            if let Some(executed_data) = ai_assistant::execute_tool(&tool_call.name, &tool_call.arguments) {
+                // Create a new tool call with the executed data
+                executed_tools.push(crate::ai::ToolCall {
+                    name: tool_call.name.clone(),
+                    arguments: executed_data,
+                });
+            }
+        }
+
+        if !executed_tools.is_empty() {
+            response.tools = Some(executed_tools);
+        }
+    }
+
     Ok(response)
 }
 
@@ -1809,11 +1828,12 @@ async fn get_productivity_insights_for_context() -> Result<ProductivityInsights,
 
 fn format_productivity_context(insights: &ProductivityInsights) -> String {
     let mut context = String::new();
-    
+
+    // Individual productivity data (always available)
     context.push_str(&format!("Today's time tracked: {:.1} hours\n", insights.total_time_today));
     context.push_str(&format!("This week's time tracked: {:.1} hours\n", insights.total_time_this_week));
     context.push_str(&format!("This month's time tracked: {:.1} hours\n\n", insights.total_time_this_month));
-    
+
     if !insights.most_used_apps.is_empty() {
         context.push_str("Most used apps:\n");
         for app in &insights.most_used_apps {
@@ -1821,12 +1841,12 @@ fn format_productivity_context(insights: &ProductivityInsights) -> String {
         }
         context.push_str("\n");
     }
-    
+
     if let Some(activity) = &insights.current_activity {
-        context.push_str(&format!("Current activity: {} ({} minutes active)\n\n", 
+        context.push_str(&format!("Current activity: {} ({} minutes active)\n\n",
             activity.app_name, activity.duration_seconds / 60));
     }
-    
+
     context.push_str(&format!("Tasks: {} total ({} todo, {} in progress, {} done, {:.1}% completion rate)\n\n",
         insights.task_stats.total,
         insights.task_stats.todo,
@@ -1834,7 +1854,7 @@ fn format_productivity_context(insights: &ProductivityInsights) -> String {
         insights.task_stats.done,
         insights.task_stats.completion_rate,
     ));
-    
+
     if !insights.productivity_trend.peak_hours.is_empty() {
         let peak_hours_str: Vec<String> = insights.productivity_trend.peak_hours
             .iter()
@@ -1842,6 +1862,38 @@ fn format_productivity_context(insights: &ProductivityInsights) -> String {
             .collect();
         context.push_str(&format!("Peak productivity hours: {}\n", peak_hours_str.join(", ")));
     }
-    
+
+    // Team data (if available for managers)
+    if let Some(team_summary) = &insights.team_summary {
+        context.push_str("\n--- TEAM DATA ---\n");
+        context.push_str(&format!("Team: {} active members out of {} total\n", team_summary.active_members, team_summary.total_members));
+        context.push_str(&format!("Team total today: {:.1} hours\n", team_summary.total_team_hours_today));
+        context.push_str(&format!("Team average today: {:.1} hours\n", team_summary.average_hours_today));
+        context.push_str(&format!("Team total this week: {:.1} hours\n", team_summary.total_team_hours_this_week));
+        context.push_str(&format!("Team average this week: {:.1} hours\n\n", team_summary.average_hours_this_week));
+
+        if !team_summary.top_performers.is_empty() {
+            context.push_str("Top performers today:\n");
+            for performer in &team_summary.top_performers {
+                context.push_str(&format!("- {}: {:.1} hours\n", performer.member_name, performer.hours));
+            }
+            context.push_str("\n");
+        }
+    }
+
+    if let Some(team_members) = &insights.team_members {
+        context.push_str("Team members data:\n");
+        for member in team_members {
+            context.push_str(&format!("- {} (ID: {}): {:.1} hours today, {:.1} hours this week, {} tasks ({}% completion)\n",
+                member.member_name,
+                member.member_id,
+                member.total_time_today,
+                member.total_time_this_week,
+                member.task_stats.total,
+                member.task_stats.completion_rate
+            ));
+        }
+    }
+
     context
 }

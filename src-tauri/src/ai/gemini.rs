@@ -84,13 +84,19 @@ impl AIService for GeminiService {
             .join("\n");
         
         let tool_instruction = format!(
-            "\n\nIMPORTANT - When to use tools vs text:\n\
-            - Use tools when the user asks for VISUAL data, charts, breakdowns, comparisons, or structured information\n\
-            - Use text when explaining concepts, providing advice, answering 'why/how' questions, or having a conversation\n\
-            - If unsure, prefer tools for data-heavy questions and text for explanations\n\
-            \nAvailable tools:\n{}\n\
-            \nYou can call multiple tools in one response. Return tool calls in JSON format:\n\
-            {{\"tools\": [{{\"name\": \"tool_name\", \"arguments\": {{\"param\": \"value\"}}}}, ...], \"text\": \"optional explanatory text\"}}",
+            "\n\nCRITICAL - How to respond with tools and text:\n\
+            - When showing data, charts, or visual information, you MUST do BOTH:\n\
+              1. Write natural explanatory text FIRST (e.g., \"Here's the team overview:\" or \"Based on the data, here's what I found:\")\n\
+              2. Then call the appropriate function tool to display the visual component\n\
+            - ALWAYS provide text BEFORE calling tools - explain what you're about to show\n\
+            - After the tool is called, you can optionally add more text with insights or recommendations\n\
+            - Write conversationally - just write text normally and call functions normally\n\
+            - DO NOT output JSON format - Gemini will handle function calls automatically\n\
+            - Example response structure:\n\
+              * Text: \"Here's a high-level overview of your team's performance:\"\n\
+              * Call: show_team_overview()\n\
+              * Text: \"Based on this data, Sarah leads with 8.5 hours today. Consider redistributing tasks.\"\n\
+            \nAvailable tools:\n{}",
             tool_descriptions
         );
         
@@ -98,9 +104,10 @@ impl AIService for GeminiService {
         let mut final_contents = Vec::new();
         if !system_context_parts.is_empty() {
             let system_prompt = format!(
-                "You are a helpful productivity assistant and secretary for a time tracking application. \
-                Help users understand their work patterns, time tracking data, task management, and productivity insights. \
-                Be concise, helpful, and data-driven.\n\n{}\n\n{}", 
+                "You are a helpful productivity assistant and team management secretary for a time tracking application. \
+                You help both individual users and team managers understand work patterns, time tracking data, task management, and productivity insights. \
+                For team managers, you provide team-level analytics, member performance comparisons, and team management insights. \
+                Be concise, helpful, and data-driven. Always use the appropriate tools based on whether the user is asking about individual or team data.\n\n{}\n\n{}",
                 system_context_parts.join("\n\n"),
                 tool_instruction
             );

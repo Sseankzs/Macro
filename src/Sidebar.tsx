@@ -9,6 +9,20 @@ interface SidebarProps {
   onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
 }
 
+// Detect if running on macOS
+function isMacOS(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform) || 
+         /Mac/.test(navigator.userAgent);
+}
+
+// Format shortcut parts based on platform
+function getShortcutParts(key: string): { modifier: string; key: string } {
+  const isMac = isMacOS();
+  const modifier = isMac ? '⌘' : 'Ctrl';
+  return { modifier, key };
+}
+
 function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
   const isTauri = () => {
     return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
@@ -48,7 +62,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'dashboard' as const,
       label: 'Home',
-      shortcut: 'Ctrl+H',
+      shortcut: getShortcutParts('H'),
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
@@ -59,7 +73,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'tasks' as const,
       label: 'Tasks',
-      shortcut: 'Ctrl+T',
+      shortcut: getShortcutParts('T'),
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M9 11l3 3l8-8"/>
@@ -70,7 +84,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'teams' as const,
       label: 'Teams',
-      shortcut: 'Ctrl+E',
+      shortcut: getShortcutParts('E'),
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -83,7 +97,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'register-apps' as const,
       label: 'Apps',
-      shortcut: 'Ctrl+A',
+      shortcut: getShortcutParts('A'),
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
@@ -95,7 +109,7 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     {
       id: 'logs' as const,
       label: 'Logs',
-      shortcut: 'Ctrl+L',
+      shortcut: getShortcutParts('L'),
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -108,13 +122,11 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
     },
     {
       id: 'ai-assistant' as const,
-      label: 'AI Assistant',
-      shortcut: 'Ctrl+I',
+      label: 'Insights',
+      shortcut: getShortcutParts('I'),
       icon: (
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
+          <path d="M9 21h6M12 3a6 6 0 0 1 6 6c0 2.22-1.206 4.16-3 5.196V17a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-2.804A5.978 5.978 0 0 1 6 9a6 6 0 0 1 6-6z"/>
         </svg>
       )
     }
@@ -165,7 +177,11 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
                   >
                     {item.icon}
                     <span className="nav-label">{item.label}</span>
-                    <span className="nav-shortcut">{item.shortcut}</span>
+                    <span className="nav-shortcut">
+                      <span className="nav-shortcut-modifier">{item.shortcut.modifier}</span>
+                      <span className="nav-shortcut-separator">+</span>
+                      <span className="nav-shortcut-key">{item.shortcut.key}</span>
+                    </span>
                   </a>
                 </li>
               ))}

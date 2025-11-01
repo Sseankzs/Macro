@@ -5,8 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5174, // Match the port expected by Tauri
-    strictPort: true, // Fail if port is already in use
+    port: 5174, // Tauri default dev port
+    strictPort: true, // Fail fast if taken; free the port if busy
   },
   define: {
     // Only expose specific environment variables that are safe for the frontend
