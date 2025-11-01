@@ -162,10 +162,11 @@ function App() {
         try {
           if (isTauri()) {
             // Initialize database and bypass login in Tauri mode
-            // We use dummy credentials since login check is bypassed
+            // Provide a fixed dev user id so backend current user context is set
             const success = await invoke<boolean>('initialize_database_and_login', {
               email: 'bypass@temp.com',
-              password: 'bypass'
+              password: 'bypass',
+              userId: 'fdbc0903-26e4-4271-8a57-34217bd2cd45'
             });
             
             if (success) {

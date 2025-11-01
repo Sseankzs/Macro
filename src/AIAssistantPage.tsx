@@ -529,6 +529,47 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
     }
   }, []);
 
+  // Handle thinking state - disable input and animate thinking message
+  const thinkingDotsRef = useRef<HTMLSpanElement>(null);
+  
+  useEffect(() => {
+    if (!inputRef.current) return;
+
+    if (isTyping) {
+      // Disable editing
+      inputRef.current.contentEditable = 'false';
+    } else {
+      // Re-enable editing
+      inputRef.current.contentEditable = 'true';
+    }
+  }, [isTyping]);
+
+  // Animate thinking dots
+  useEffect(() => {
+    if (!isTyping || !thinkingDotsRef.current) return;
+
+    let dotCount = 0;
+    let isActive = true;
+    let currentTimer: NodeJS.Timeout | null = null;
+    
+    const updateDots = () => {
+      if (!thinkingDotsRef.current || !isActive) return;
+      const dots = '.'.repeat((dotCount % 3) + 1);
+      thinkingDotsRef.current.textContent = dots;
+      dotCount++;
+      currentTimer = setTimeout(updateDots, 500);
+    };
+    
+    updateDots();
+    
+    return () => {
+      isActive = false;
+      if (currentTimer) {
+        clearTimeout(currentTimer);
+      }
+    };
+  }, [isTyping]);
+
   const streamText = (text: string, callback: (chunk: string) => void) => {
     let index = 0;
     const interval = setInterval(() => {
@@ -1190,27 +1231,30 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
                 </div>
               ))}
               
-              {(isTyping || isStreaming) && (
+              {isTyping && (
+                 <div className="message ai-message thinking-message">
+                   <div className="message-avatar">
+                     <div className="ai-avatar"></div>
+                   </div>
+                   <div className="message-content">
+                     <div className="message-text thinking-text-message">
+                       <span className="thinking-word">Thinking</span><span ref={thinkingDotsRef} className="thinking-dots-animated">.</span>
+                     </div>
+                   </div>
+                 </div>
+               )}
+              
+              {isStreaming && (
                  <div className="message ai-message">
                    <div className="message-avatar">
                      <div className="ai-avatar"></div>
                    </div>
                    <div className="message-content">
                      <div className="message-text">
-                       {isStreaming ? (
-                         <>
-                           {streamingMessage.split('\n').map((line, index) => (
-                             <div key={index}>{line}</div>
-                           ))}
-                           <span className="streaming-cursor">|</span>
-                         </>
-                       ) : (
-                         <span className="typing-indicator">
-                           <span></span>
-                           <span></span>
-                           <span></span>
-                         </span>
-                       )}
+                       {streamingMessage.split('\n').map((line, index) => (
+                         <div key={index}>{line}</div>
+                       ))}
+                       <span className="streaming-cursor">|</span>
                      </div>
                    </div>
                  </div>
@@ -1228,8 +1272,8 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
                    dir="ltr"
                    onInput={handleInputChange}
                    onKeyDown={handleKeyDown}
-                   className="message-input content-editable-input"
-                   data-placeholder="Message AI Assistant... (use @ to mention team members)"
+                   className={`message-input content-editable-input ${isTyping ? 'thinking-state' : ''}`}
+                   data-placeholder={isTyping ? '' : "Message AI Assistant... (use @ to mention team members)"}
                    suppressContentEditableWarning={true}
                  />
                  <button 

@@ -9,7 +9,8 @@ pub fn get_default_user() -> User {
         email: Some("dev@example.com".to_string()),
         team_id: None,
         current_project_id: None,
-        role: crate::database::UserRole::Owner,
+        // Default to Owner in dev, but optional
+        role: Some(crate::database::UserRole::Owner),
         created_at: Some(Utc::now()),
         updated_at: Some(Utc::now()),
         image_url: None,
@@ -20,4 +21,3 @@ pub fn get_default_user() -> User {
 pub fn get_default_user_id() -> String {
     "fdbc0903-26e4-4271-8a57-34217bd2cd45".to_string()
 }
-

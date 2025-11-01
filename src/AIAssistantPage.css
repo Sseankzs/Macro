@@ -432,9 +432,54 @@
   transform: translateY(-1px);
 }
 
+/* Thinking State - Input disabled */
+.message-input.thinking-state {
+  cursor: not-allowed;
+  opacity: 0.6;
+  user-select: none;
+  pointer-events: none;
+}
+
+.message-input.thinking-state:focus {
+  border-color: #e1e5e9;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.8);
+  transform: none;
+}
+
 .message-input::placeholder {
   color: var(--text-muted);
   font-weight: 400;
+}
+
+/* Thinking Message Bubble */
+.thinking-message {
+  animation: thinkingFadeIn 0.3s ease-in;
+}
+
+.thinking-text-message {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.thinking-word {
+  margin-right: 2px;
+}
+
+.thinking-dots-animated {
+  display: inline-block;
+  min-width: 1.5em;
+}
+
+@keyframes thinkingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .send-button {

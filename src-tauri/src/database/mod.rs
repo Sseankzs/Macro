@@ -95,7 +95,8 @@ pub struct User {
     pub email: Option<String>, // Make optional to match database schema
     pub team_id: Option<String>,
     pub current_project_id: Option<String>,
-    pub role: UserRole,
+    // Make role optional to tolerate schemas that don't use roles
+    pub role: Option<UserRole>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
     pub image_url: Option<String>, // Add missing field from database
