@@ -636,11 +636,9 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     try {
       if (isTauri()) {
         const members = await invoke('get_users_by_team', { teamId }) as any[];
-        console.log('🔍 Raw members from backend:', members);
         
         // Map backend User objects to TeamMember with role
         const teamMembers: TeamMember[] = members.map((user: any) => {
-          console.log('🔍 Processing user:', user.name, 'role:', user.role);
           return {
             id: user.id,
             name: user.name,
@@ -649,8 +647,6 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             currentApp: 'sleeping' // Default, will be updated below
           };
         });
-        
-        console.log('🔍 Mapped team members:', teamMembers);
         
         // Fetch current app for each member (in parallel)
         const membersWithApps = await Promise.all(
@@ -962,13 +958,16 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       }
     };
 
-    document.addEventListener('click', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
+    if (contextMenu?.visible) {
+      document.addEventListener('click', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+    }
+    
     return () => {
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [contextMenu]);
+  }, [contextMenu?.visible]); // Only depend on visibility, not the entire contextMenu object
 
   // Function to create a new team
   const handleCreateTeam = async (teamData: { name: string; description?: string }) => {
@@ -1065,12 +1064,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
 
   // Get tasks by status
   const getTasksByStatus = (status: 'Todo' | 'InProgress' | 'Done') => {
-    const filteredTasks = tasks.filter(task => task.status === status);
-    console.log(`=== TASKS FOR STATUS: ${status} ===`);
-    console.log('All tasks:', tasks);
-    console.log('Filtered tasks:', filteredTasks);
-    console.log('===============================');
-    return filteredTasks;
+    return tasks.filter(task => task.status === status);
   };
 
   // Get priority color
@@ -1521,23 +1515,16 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                   const owners: TeamMember[] = [];
                   const members: TeamMember[] = [];
                   
-                  console.log('🔍 Segregating members. Total members:', teamMembers.length);
-                  
                   teamMembers.forEach(member => {
                     const role = member.role?.toLowerCase() || 'member';
-                    console.log('🔍 Member:', member.name, 'Role:', member.role, 'Normalized role:', role);
                     
                     if (role === 'owner') {
-                      console.log('  ✅ Adding to owners');
                       owners.push(member);
                     } else {
-                      console.log('  ✅ Adding to members');
                       // All non-owners are considered members
                       members.push(member);
                     }
                   });
-
-                  console.log('🔍 Final segregation - Owners:', owners.length, 'Members:', members.length);
 
                   return (
                     <>
@@ -1606,8 +1593,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         workspaceId={selectedTeam || undefined} // Pass the selected team/workspace ID
         onTaskAdded={() => {
           setShowAddTaskModal(false);
-          // Reload tasks only
-          refreshTasks();
+          // Only refresh if tasks are currently loaded for the selected team
+          if (selectedTeam) {
+            refreshTasks();
+          }
         }}
       />
       
@@ -1673,8 +1662,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         task={selectedTask}
         clickPosition={clickPosition}
         onTaskUpdated={() => {
-          // Reload tasks to reflect changes
-          refreshTasks();
+          // Only refresh if there's a selected team (more targeted refresh)
+          if (selectedTeam) {
+            refreshTasks();
+          }
         }}
       />
       

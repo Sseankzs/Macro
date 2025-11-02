@@ -77,6 +77,8 @@
   width: 100vw;
   background: var(--bg) !important;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  overflow: hidden; /* Prevent any scrolling on the main container */
+  overflow-x: hidden; /* Explicitly prevent horizontal scrolling */
 }
 
 /* Ensure body background matches when dashboard is active */
@@ -98,15 +100,26 @@ html, body {
   flex-direction: column;
   border-right: 1px solid transparent;
   transition: width 0.2s ease;
+  overflow: hidden; /* Prevent any overflow */
+  overflow-x: hidden; /* Explicitly prevent horizontal scrolling */
+  max-width: 72px; /* Ensure it doesn't exceed the intended width */
+  min-width: 72px; /* Ensure it maintains minimum width */
+  box-sizing: border-box; /* Include border in width calculation */
 }
 
 .sidebar-header {
   padding: 1rem 0.75rem 0.5rem 0.75rem;
+  overflow: hidden; /* Prevent overflow */
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sidebar-footer {
   padding: 0.5rem 0.75rem 1rem 0.75rem;
   margin-top: auto;
+  overflow: hidden; /* Prevent overflow */
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .logout-btn-top {
@@ -216,6 +229,8 @@ input, select, textarea {
   flex: 1;
   padding: 0.5rem 0;
   overflow-y: auto;
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  max-width: 100%; /* Ensure content doesn't overflow */
 }
 
 .search-bar {
@@ -278,6 +293,9 @@ input, select, textarea {
 .nav-item {
   margin: 0.25rem 0.5rem;
   padding: 0;
+  max-width: calc(100% - 1rem); /* Account for margins */
+  overflow: hidden; /* Prevent any overflow */
+  box-sizing: border-box;
 }
 
 .nav-link {
@@ -293,6 +311,9 @@ input, select, textarea {
   font-size: var(--font-base);
   font-weight: 500;
   position: relative;
+  max-width: 100%; /* Prevent overflow */
+  overflow: hidden; /* Clip any overflowing content */
+  box-sizing: border-box; /* Include padding in width calculation */
 }
 
 .nav-label {
@@ -370,6 +391,8 @@ input, select, textarea {
   height: 24px;
   stroke-width: 2;
   flex-shrink: 0;
+  max-width: 24px; /* Ensure icon doesn't exceed intended size */
+  max-height: 24px;
 }
 
 

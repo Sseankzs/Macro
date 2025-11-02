@@ -5,6 +5,8 @@
   width: 100vw;
   background: var(--bg);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  overflow: hidden; /* Prevent any scrolling on the main container */
+  overflow-x: hidden; /* Explicitly prevent horizontal scrolling */
 }
 
 /* Unified Task Management Container */
@@ -16,22 +18,26 @@
   border-radius: 12px;
   border: 1px solid var(--border);
   overflow: hidden;
+  overflow-x: hidden; /* Explicitly prevent horizontal scrolling */
   margin: 1rem 0.5rem 1rem 0;
+  /* Remove max-width constraint to use full available space */
 }
 
 /* Left Sidebar - Teams */
 .task-teams-sidebar {
-  width: 240px;
+  width: 280px; /* Increased from 240px for better content display */
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overflow-x: hidden; /* Prevent horizontal scrolling */
   border-radius: 12px 0 0 12px;
+  flex-shrink: 0; /* Prevent shrinking */
 }
 
 .task-teams-header {
-  padding: 1.5rem 1rem;
+  padding: 1.5rem 1.25rem; /* Increased horizontal padding */
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -75,7 +81,8 @@
 .task-teams-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem;
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  padding: 0.75rem; /* Increased from 0.5rem */
 }
 
 .team-item {
@@ -88,6 +95,8 @@
   cursor: pointer;
   transition: all 0.2s ease;
   color: var(--text);
+  overflow: hidden; /* Ensure content doesn't overflow */
+  box-sizing: border-box; /* Include padding in width calculation */
 }
 
 .team-info {
@@ -141,14 +150,16 @@
 
 /* Right Sidebar - Team Members */
 .task-members-sidebar {
-  width: 240px;
+  width: 280px; /* Increased from 240px for better content display */
   background: var(--surface);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overflow-x: hidden; /* Prevent horizontal scrolling */
   border-radius: 0 12px 12px 0;
   transition: width 0.3s ease;
+  flex-shrink: 0; /* Prevent shrinking */
 }
 
 .task-members-sidebar.collapsed {
@@ -166,7 +177,7 @@
 }
 
 .task-members-header {
-  padding: 1.5rem 1rem;
+  padding: 1.5rem 1.25rem; /* Increased horizontal padding */
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -211,11 +222,13 @@
 .task-members-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem;
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  padding: 0.75rem; /* Increased from 0.5rem */
 }
 
 .member-role-group {
   margin-bottom: 16px;
+  overflow: hidden; /* Ensure content doesn't overflow */
 }
 
 .member-role-label {
@@ -238,6 +251,8 @@
   transition: all 0.2s ease;
   cursor: pointer;
   min-height: 44px;
+  overflow: hidden; /* Ensure content doesn't overflow */
+  box-sizing: border-box; /* Include padding in width calculation */
 }
 
 .member-item:hover {
@@ -364,7 +379,7 @@
 }
 
 .tasks-header {
-  padding: 1.5rem 2rem 0 2rem;
+  padding: 1.5rem 2.5rem 0 2.5rem; /* Increased horizontal padding */
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -413,8 +428,8 @@
 .task-board {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 32px;
-  padding: 32px;
+  gap: 36px; /* Increased from 32px for better spacing */
+  padding: 36px; /* Increased from 32px for better use of space */
   flex: 1;
   overflow: hidden;
   animation: fadeInUp 0.6s ease-out;
@@ -512,16 +527,21 @@
   transition: all 0.2s ease;
   position: relative;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  /* Remove automatic animation - only apply on initial load */
+}
+
+/* Optional: Add animation class for initial load only */
+.task-card.animate-in {
   animation: fadeInUp 0.4s ease-out;
   animation-fill-mode: both;
 }
 
-/* Staggered animation for task cards */
-.task-card:nth-child(1) { animation-delay: 0.1s; }
-.task-card:nth-child(2) { animation-delay: 0.2s; }
-.task-card:nth-child(3) { animation-delay: 0.3s; }
-.task-card:nth-child(4) { animation-delay: 0.4s; }
-.task-card:nth-child(5) { animation-delay: 0.5s; }
+/* Staggered animation for task cards (only when animate-in class is present) */
+.task-card.animate-in:nth-child(1) { animation-delay: 0.1s; }
+.task-card.animate-in:nth-child(2) { animation-delay: 0.2s; }
+.task-card.animate-in:nth-child(3) { animation-delay: 0.3s; }
+.task-card.animate-in:nth-child(4) { animation-delay: 0.4s; }
+.task-card.animate-in:nth-child(5) { animation-delay: 0.5s; }
 
 .task-card:hover {
   transform: translateY(-1px);
