@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import './RegisterAppsPage.css';
 import Sidebar from './Sidebar';
 import { invoke } from '@tauri-apps/api/core';
-import { formatForTable } from './utils';
 import { useDashboardCache } from './contexts/DashboardCacheContext';
 import { BYPASS_DB_APPS } from './config';
 import PageSourceBadge from './components/PageSourceBadge';
@@ -43,11 +42,9 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [rlsErrors, setRlsErrors] = useState<string[]>([]);
 
-  const [showAddAppModal, setShowAddAppModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const modalRef = useRef<HTMLDivElement>(null);
-  const [detectedApps, setDetectedApps] = useState<DetectedApp[]>([]);
-  const [isLoadingDetectedApps, setIsLoadingDetectedApps] = useState(false);
+  const [showDetectedAppModal, setShowDetectedAppModal] = useState(false);
+  const [hiddenAppIds, setHiddenAppIds] = useState<Set<string>>(new Set());
 
   // Dashboard cache context for updating applications data
   const { updateCache } = useDashboardCache();
@@ -60,7 +57,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
       console.log('🚀 Initializing RegisterAppsPage...');
       
       try {
-        // Load apps
+        // Load apps - toggle state persists via database
         await fetchApps();
       } catch (error) {
         console.error('❌ Failed to initialize page:', error);
@@ -105,66 +102,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
       setIsLoadingApps(false);
     }
   };
-
-  // Fetch detected apps when dropdown opens
-  const fetchDetectedApps = async () => {
-    try {
-      console.log('🔍 Fetching detected apps...');
-      setIsLoadingDetectedApps(true);
-      setError(null);
-      
-      const apps = await invoke<DetectedApp[]>('get_running_processes');
-      console.log('📱 Raw detected apps:', apps);
-      
-      // Filter out background apps (only show active apps)
-      const activeApps = apps.filter(app => app.is_active);
-      console.log('✅ Active apps found:', activeApps.length);
-      
-      setDetectedApps(activeApps);
-      
-      if (activeApps.length === 0) {
-        console.log('⚠️ No active apps detected');
-        setError('No active applications detected. Please open an application and try again.');
-      }
-    } catch (error) {
-      console.error('❌ Failed to fetch detected apps:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      if (errorMessage.includes('permission')) {
-        const permError = 'Permission denied to access running processes.';
-        setRlsErrors(prev => [...prev, permError]);
-        setError(`Permission Error: ${permError}`);
-      } else if (errorMessage.includes('timeout')) {
-        const timeoutError = 'Process detection timed out.';
-        setRlsErrors(prev => [...prev, timeoutError]);
-        setError(`Timeout Error: ${timeoutError}`);
-      } else {
-        setError(`Failed to detect applications: ${errorMessage}`);
-      }
-      
-      setDetectedApps([]);
-    } finally {
-      setIsLoadingDetectedApps(false);
-    }
-  };
-
-  // Close modal when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
-        setShowAddAppModal(false);
-      }
-    };
-
-    if (showAddAppModal) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showAddAppModal]);
 
   const handleToggleApp = async (appId: string) => {
     if (BYPASS_DB_APPS) {
@@ -312,59 +249,37 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
     }
   };
 
-  const handleDeleteApp = async (appId: string) => {
-    if (BYPASS_DB_APPS) {
-      // Local delete only
-      setApps(prev => prev.filter(a => a.id !== appId));
-      setError(null);
-      return;
-    }
-    try {
-      console.log('🗑️ Deleting app:', appId);
-      
-      const app = apps.find(a => a.id === appId);
-      if (!app) {
-        console.error('❌ App not found for deletion:', appId);
-        setError('App not found');
-        return;
-      }
+  const handleDeleteApp = (appId: string) => {
+    // Hide app instead of deleting - just add to hidden list
+    setHiddenAppIds(prev => new Set([...prev, appId]));
+    setError(null);
+  };
 
-      console.log('📱 Deleting app:', { name: app.name, id: appId });
+  const handleUnhideApp = (appId: string) => {
+    // Remove from hidden list to show it again
+    setHiddenAppIds(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(appId);
+      return newSet;
+    });
+  };
 
-      await invoke('delete_my_application', { appId: appId });
-      
-      console.log('✅ App deleted successfully');
-      
-      // Update local state
-      setApps(prevApps => prevApps.filter(app => app.id !== appId));
-      setError(null);
-    } catch (error) {
-      console.error('❌ Failed to delete app:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // Analyze RLS errors
-      if (errorMessage.includes('42501') || errorMessage.includes('row-level security')) {
-        const rlsError = 'RLS Policy Error: User lacks permission to delete from applications table.';
-        setRlsErrors(prev => [...prev, rlsError]);
-        setError(`RLS Error: ${rlsError}`);
-      } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-        const authError = 'Authentication Error: Invalid credentials for delete operation.';
-        setRlsErrors(prev => [...prev, authError]);
-        setError(`Auth Error: ${authError}`);
-      } else {
-        setError(`Failed to delete application: ${errorMessage}`);
-      }
+  const handleAddBackApp = async (appId: string) => {
+    // Unhide the app first
+    handleUnhideApp(appId);
+    
+    // Then ensure it's tracked (only toggle if it's currently off)
+    const app = apps.find(a => a.id === appId);
+    if (app && !(app.is_tracked ?? false)) {
+      // Only toggle if it's not already tracked
+      await handleToggleApp(appId);
     }
   };
 
 
   const handleAddAppClick = async () => {
-    if (!showAddAppModal) {
-      // Fetch detected apps when opening modal (Windows logic)
-      await fetchDetectedApps();
-    }
-    setShowAddAppModal(!showAddAppModal);
+    // Open modal with registered apps
+    setShowDetectedAppModal(true);
   };
 
   // Smart category detection based on app name
@@ -809,72 +724,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
     );
   };
 
-  const AppCard = ({ app }: { app: App }) => (
-    <div className={`app-card ${!(app.is_tracked ?? false) && !isEditMode ? 'disabled' : ''} ${isEditMode ? 'edit-mode' : ''}`}>
-      {isEditMode && (
-        <button 
-          className="delete-button"
-          onClick={() => handleDeleteApp(app.id)}
-          title="Remove app"
-        >
-          −
-        </button>
-      )}
-      <div className="app-header">
-        <div className="app-info">
-          <h4 className="app-name">{app.name}</h4>
-          <p className="app-directory">{app.process_name}</p>
-          {isEditMode && (
-            <div className="app-category-edit" style={{ marginTop: '8px' }}>
-              <label style={{ fontSize: '12px', color: '#666', marginRight: '8px' }}>
-                Category:
-              </label>
-              <CategorySelector
-                currentCategory={app.category}
-                onCategoryChange={(category) => handleCategoryUpdate(app.id, category)}
-                disabled={false}
-              />
-            </div>
-          )}
-          {!isEditMode && app.category && (
-            <span className="app-category" style={{ 
-              fontSize: '11px', 
-              color: '#666', 
-              backgroundColor: '#f0f0f0', 
-              padding: '2px 6px', 
-              borderRadius: '3px',
-              marginTop: '4px',
-              display: 'inline-block'
-            }}>
-              {app.category}
-            </span>
-          )}
-        </div>
-        <div className="app-actions">
-          {!isEditMode && (
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={app.is_tracked ?? false}
-                onChange={() => handleToggleApp(app.id)}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          )}
-        </div>
-      </div>
-      
-      <div className="app-details">
-        <div className="app-meta">
-          {app.last_used && (
-            <span className="last-used">Last used: {formatForTable(app.last_used)}</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-
   return (
     <div className="dashboard-container">
       <PageSourceBadge source="src/RegisterAppsPage.tsx" />
@@ -904,82 +753,13 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
                 {isEditMode ? 'Done' : 'Edit'}
               </button>
               {!isEditMode && (
-                <>
-                  <button 
-                    className="add-app-button"
-                    onClick={handleAddAppClick}
-                  >
-                    Add App
-                  </button>
-
-                  {showAddAppModal && (
-                    <div className="modal-overlay" onClick={() => setShowAddAppModal(false)}>
-                      <div className="add-app-modal" ref={modalRef} onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                          <h2>Add Applications</h2>
-                          <button 
-                            className="modal-close-button"
-                            onClick={() => setShowAddAppModal(false)}
-                          >
-                            ×
-                          </button>
-                        </div>
-                        <div className="modal-content">
-                          {isLoadingDetectedApps ? (
-                            <div className="modal-loading">
-                              <span className="loading-spinner">⏳</span>
-                              <p>Detecting apps...</p>
-                            </div>
-                          ) : (
-                            <div className="detected-apps-list">
-                              {detectedApps.length === 0 ? (
-                                <div className="modal-empty">
-                                  <div className="empty-icon">📱</div>
-                                  <p>No apps detected</p>
-                                  <p className="empty-subtitle">Open some applications and try again</p>
-                                </div>
-                              ) : (
-                                detectedApps.map((app, index) => {
-                                  const isAlreadyRegistered = apps.some(registeredApp => 
-                                    registeredApp.name === app.name || registeredApp.process_name === app.process_name
-                                  );
-                                  return (
-                                    <div
-                                      key={index}
-                                      className={`detected-app-item ${isAlreadyRegistered ? 'disabled' : ''}`}
-                                    >
-                                      <div className="detected-app-info">
-                                        <span className="detected-app-icon">{getAppIcon(app.name)}</span>
-                                        <div className="detected-app-details">
-                                          <span className="detected-app-name">{app.name}</span>
-                                          {app.window_title && (
-                                            <span className="detected-app-window">{app.window_title}</span>
-                                          )}
-                                          <span className="detected-app-process">{app.process_name}</span>
-                                        </div>
-                                      </div>
-                                      {isAlreadyRegistered ? (
-                                        <span className="already-registered-badge">Already Added</span>
-                                      ) : (
-                                        <button
-                                          className="add-icon-button"
-                                          onClick={() => handleAddFromDropdown(app)}
-                                          title="Add app"
-                                        >
-                                          +
-                                        </button>
-                                      )}
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
+                <button 
+                  className="add-app-button"
+                  onClick={handleAddAppClick}
+                  title="Add App"
+                >
+                  +
+                </button>
               )}
             </div>
           </div>
@@ -1033,24 +813,142 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
               </div>
             ) : (
               <div className="apps-section">
-                <div className="apps-grid">
-                  {apps.map(app => (
-                    <AppCard key={app.id} app={app} />
-                  ))}
-                </div>
-                
-                {apps.length === 0 && (
-                  <div className="empty-state">
-                    <div className="empty-icon">📱</div>
-                    <h3>No apps registered</h3>
-                    <p>Use the dropdown above to add your first application and start tracking time and productivity.</p>
+                {/* Registered Apps Section - shows apps that are toggled on */}
+                <div className="detected-apps-section" style={{ marginBottom: '2rem' }}>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text)', marginBottom: '1rem' }}>
+                    Registered Apps
+                  </h2>
+                  <div className="detected-apps-grid">
+                    {apps.filter(app => !hiddenAppIds.has(app.id) && (app.is_tracked ?? false)).length === 0 ? (
+                      <div className="modal-empty">
+                        <div className="empty-icon">📱</div>
+                        <p>No apps registered</p>
+                        <p className="empty-subtitle">Add applications to start tracking</p>
+                      </div>
+                    ) : (
+                      apps.filter(app => !hiddenAppIds.has(app.id) && (app.is_tracked ?? false)).map((app) => (
+                          <div
+                            key={app.id}
+                            className={`detected-app-item ${!(app.is_tracked ?? false) ? 'disabled' : ''}`}
+                          >
+                            <div className="detected-app-info">
+                              <span className="detected-app-icon">{getAppIcon(app.name)}</span>
+                              <div className="detected-app-details">
+                                <span className="detected-app-name">{app.name}</span>
+                                <span className="detected-app-process">{app.process_name}</span>
+                                {app.category && (
+                                  <span className="detected-app-window" style={{ color: '#007AFF', fontSize: '0.75rem', marginTop: '4px' }}>
+                                    {app.category}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {isEditMode ? (
+                              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <CategorySelector
+                                  currentCategory={app.category}
+                                  onCategoryChange={(category) => handleCategoryUpdate(app.id, category)}
+                                />
+                                <button
+                                  className="delete-button"
+                                  onClick={() => handleDeleteApp(app.id)}
+                                  title="Delete app"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="toggle-switch">
+                                <input
+                                  type="checkbox"
+                                  checked={app.is_tracked ?? false}
+                                  onChange={() => handleToggleApp(app.id)}
+                                />
+                                <span className="toggle-slider"></span>
+                              </label>
+                            )}
+                          </div>
+                        ))
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Detected App Modal */}
+      {showDetectedAppModal && (
+        <div className="modal-overlay" onClick={() => setShowDetectedAppModal(false)}>
+          <div className="add-app-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Detected app</h2>
+              <button 
+                className="modal-close-button"
+                onClick={() => setShowDetectedAppModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-content">
+              {isLoadingApps ? (
+                <div className="modal-loading">
+                  <span className="loading-spinner">⏳</span>
+                  <p>Loading apps...</p>
+                </div>
+              ) : (
+                <div className="detected-apps-list">
+                  {apps.length === 0 ? (
+                    <div className="modal-empty">
+                      <div className="empty-icon">📱</div>
+                      <p>No apps registered</p>
+                      <p className="empty-subtitle">Add applications to start tracking</p>
+                    </div>
+                  ) : (
+                    apps.map((app) => (
+                      <div
+                        key={app.id}
+                        className="detected-app-item"
+                      >
+                        <div className="detected-app-info">
+                          <span className="detected-app-icon">{getAppIcon(app.name)}</span>
+                          <div className="detected-app-details">
+                            <span className="detected-app-name">{app.name}</span>
+                            <span className="detected-app-process">{app.process_name}</span>
+                            {app.category && (
+                              <span className="detected-app-window" style={{ color: '#007AFF', fontSize: '0.75rem', marginTop: '4px' }}>
+                                {app.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {!isEditMode && (
+                          <button
+                            className="add-icon-button"
+                            onClick={async () => {
+                              if (hiddenAppIds.has(app.id)) {
+                                // Hidden app: unhide and ensure it's tracked
+                                await handleAddBackApp(app.id);
+                              } else {
+                                // Regular app: just toggle
+                                await handleToggleApp(app.id);
+                              }
+                            }}
+                            title="Add to tracked apps"
+                          >
+                            +
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

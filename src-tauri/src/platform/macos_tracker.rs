@@ -265,12 +265,38 @@ impl MacOSTracker {
             // Get tracked applications from database
             let tracked_apps = DatabaseHelpers::get_tracked_applications(&self.base.db).await?;
             
+            // Debug: log current app and tracked apps
+            println!("🔍 Current app: '{}' (bundle: {})", app_name, bundle_id);
+            println!("🔍 Tracked apps count: {}", tracked_apps.len());
+            for app in &tracked_apps {
+                println!("  - {} (process_name: {})", app.name, app.process_name);
+            }
+            
             // Check if the current app is in the tracked list
-            let app_is_tracked = tracked_apps.iter().any(|app| names_match(&app.process_name, &app_name));
+            // On macOS, process_name is typically the bundle identifier, so match against bundle_id
+            // Also try matching by name as a fallback (helps with cross-platform apps)
+            let app_is_tracked = tracked_apps.iter().any(|app| {
+                // Primary match: bundle identifier to process_name (both are bundle IDs on macOS)
+                let bundle_match = names_match(&app.process_name, &bundle_id);
+                // Secondary match: app name to localized name (both are display names)
+                let name_match = names_match(&app.name, &app_name);
+                // Tertiary match: process_name to app_name (for edge cases where process_name might be name)
+                let fallback_match = names_match(&app.process_name, &app_name);
+                // Cross-platform match: try lenient name matching (helps with Windows->macOS migration)
+                let cross_platform_match = app_name_likely_matches(&app.name, &app.process_name, &app_name, &bundle_id);
+                
+                let matches = bundle_match || name_match || fallback_match || cross_platform_match;
+                if matches {
+                    println!("✅ Matched app '{}' (process_name: {}) - bundle: {}, name: {}, fallback: {}, cross-platform: {}", 
+                             app.name, app.process_name, bundle_match, name_match, fallback_match, cross_platform_match);
+                }
+                
+                matches
+            });
             
             // If app is not tracked, stop all active tracking
             if !app_is_tracked && !state.active_apps.is_empty() {
-                println!("Current app '{}' is not in tracked list, stopping all active tracking", app_name);
+                println!("Current app '{}' (bundle: {}) is not in tracked list, stopping all active tracking", app_name, bundle_id);
                 
                 // End all active time entries
                 let entry_ids_to_end: Vec<String> = state.active_apps.values().cloned().collect();
@@ -284,8 +310,15 @@ impl MacOSTracker {
             
             // Only start/continue tracking if the current app is in the tracked list
             if app_is_tracked {
-                // Find the tracked app that matches the current app (case-insensitive, ignore .app)
-                if let Some(tracked_app) = tracked_apps.iter().find(|app| names_match(&app.process_name, &app_name)) {
+                // Find the tracked app that matches the current app
+                // Try bundle ID first (most reliable), then name, then cross-platform matching
+                let tracked_app = tracked_apps.iter().find(|app| {
+                    names_match(&app.process_name, &bundle_id) || 
+                    names_match(&app.name, &app_name) ||
+                    app_name_likely_matches(&app.name, &app.process_name, &app_name, &bundle_id)
+                });
+                
+                if let Some(tracked_app) = tracked_app {
                     // Check if we're already tracking this app
                     if let Some(_entry_id) = state.active_apps.get(&app_name) {
                         // Continue existing entry
@@ -334,8 +367,11 @@ impl MacOSTracker {
             let start_time = chrono::Utc::now();
             
             // Check if this app is being tracked in the database
+            // Match against both app_name and bundle_id since active_apps might use either as key
             let state = self.base.state.lock().await;
-            let is_being_tracked = state.active_apps.keys().any(|k| names_match(k, &app_name));
+            let is_being_tracked = state.active_apps.keys().any(|k| {
+                names_match(k, &app_name) || names_match(k, &bundle_id)
+            });
             let active_apps_count = state.active_apps.len();
             drop(state);
             
@@ -383,11 +419,41 @@ impl MacOSTracker {
 
 // Helpers
 fn normalize_name(name: &str) -> String {
-    name.trim().trim_end_matches(".app").to_lowercase()
+    // Remove .exe, .app extensions and normalize
+    name.trim()
+        .trim_end_matches(".app")
+        .trim_end_matches(".exe")
+        .to_lowercase()
 }
 
 fn names_match(a: &str, b: &str) -> bool {
     let a_norm = normalize_name(a);
     let b_norm = normalize_name(b);
     a_norm == b_norm || a_norm.contains(&b_norm) || b_norm.contains(&a_norm)
+}
+
+// More lenient matching for cross-platform scenarios
+// Tries to match app names even if process_name formats differ
+fn app_name_likely_matches(app_name: &str, process_name: &str, detected_name: &str, detected_bundle: &str) -> bool {
+    // Normalize all names
+    let app_norm = normalize_name(app_name);
+    let proc_norm = normalize_name(process_name);
+    let detected_norm = normalize_name(detected_name);
+    let bundle_norm = normalize_name(detected_bundle);
+    
+    // Try exact matches first
+    if proc_norm == bundle_norm || proc_norm == detected_norm {
+        return true;
+    }
+    
+    // Try name matches (more lenient)
+    if app_norm == detected_norm {
+        return true;
+    }
+    
+    // Try partial matches
+    app_norm.contains(&detected_norm) || 
+    detected_norm.contains(&app_norm) ||
+    proc_norm.contains(&detected_norm) ||
+    detected_norm.contains(&proc_norm)
 }

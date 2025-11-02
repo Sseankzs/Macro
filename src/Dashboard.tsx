@@ -94,6 +94,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   const [mostUsedApp, setMostUsedApp] = useState<AppTimeData | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [missingApps, setMissingApps] = useState<Map<string, string>>(new Map()); // app_id -> status
   
   // State for charts
   const [selectedTimePeriod, setSelectedTimePeriod] = useState<'today' | 'week' | 'month'>('week');
@@ -147,6 +148,70 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     return `${dateStr} at ${timeStr}`;
   };
 
+  // Helper function to get app name with proper handling of missing/deleted apps
+  const getAppName = (appId?: string): string => {
+    if (!appId) {
+      return 'Unknown App';
+    }
+    
+    // First check if we have the app in our applications list
+    const app = applications.find(a => a.id === appId);
+    if (app) {
+      return app.name;
+    }
+    
+    // Check if we have a status for this app (deleted, etc.)
+    const status = missingApps.get(appId);
+    if (status === 'deleted') {
+      return 'Deleted App';
+    }
+    
+    // If apps are loaded but this one isn't found, it's likely deleted
+    if (applications.length > 0) {
+      return 'Deleted App';
+    }
+    
+    // Apps not loaded yet
+    return 'Loading...';
+  };
+
+  // Fetch missing apps that are referenced in time entries
+  const fetchMissingApps = async (appIds: string[]) => {
+    try {
+      const existingIds = applications.map(a => a.id);
+      const missingIds = appIds.filter(id => !existingIds.includes(id));
+      
+      if (missingIds.length === 0) {
+        return; // All apps are already loaded
+      }
+
+      console.log('📱 Dashboard: Fetching missing apps:', missingIds);
+
+      // Fetch all apps
+      const allApps = await invoke<Application[]>('get_my_applications');
+      
+      // Update applications with any newly found apps
+      const foundApps = allApps.filter(app => missingIds.includes(app.id));
+      if (foundApps.length > 0) {
+        setApplications(prev => [...prev, ...foundApps]);
+        console.log('✅ Dashboard: Found missing apps:', foundApps.map(a => a.name));
+      }
+      
+      // Mark apps that still don't exist as deleted
+      const stillMissing = missingIds.filter(id => !allApps.some(a => a.id === id));
+      if (stillMissing.length > 0) {
+        setMissingApps(prev => {
+          const updated = new Map(prev);
+          stillMissing.forEach(id => updated.set(id, 'deleted'));
+          return updated;
+        });
+        console.log('⚠️ Dashboard: Apps not found (deleted):', stillMissing);
+      }
+    } catch (error) {
+      console.error('Failed to fetch missing apps:', error);
+    }
+  };
+
   // Load user, tasks, and stats data
   const loadDashboardData = async () => {
     try {
@@ -184,6 +249,16 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
 
         // Store timeEntries in local state for direct access
         setTimeEntries(timeEntries);
+
+        // Fetch any missing apps referenced in time entries
+        const uniqueAppIds = [...new Set(timeEntries
+          .filter(e => e.app_id)
+          .map(e => e.app_id)
+          .filter((id): id is string => !!id))];
+        
+        if (uniqueAppIds.length > 0) {
+          fetchMissingApps(uniqueAppIds);
+        }
 
         // Store data in cache for use by other effects
         updateCache({
@@ -401,12 +476,15 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     for (const [appId, hours] of appTimeMap.entries()) {
       if (hours > maxHours) {
         const app = appMap.get(appId);
-        if (app) {
+        // Use helper function to get app name (handles missing/deleted apps)
+        const appName = getAppName(appId);
+        // Only set if we got a valid name (not "Loading..." or "Unknown App" with no ID)
+        if (appName && appName !== 'Unknown App' && appName !== 'Loading...') {
           mostUsedAppData = {
-            application: app.name,
+            application: appName,
             time: formatTimeWithFullWords(hours),
             hours: hours,
-            category: app.category
+            category: app ? app.category : undefined
           };
           maxHours = hours;
         }
@@ -523,8 +601,10 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       const app = appMap.get(appId);
       // Only include apps with meaningful time (at least 1 minute)
       if (hours >= 1/60) {
+        // Use helper function to get app name (handles missing/deleted apps)
+        const appName = getAppName(appId);
         result.push({
-          application: app ? app.name : `Unknown App (${appId.slice(0, 6)})`,
+          application: appName,
           time: formatTimeWithFullWords(hours),
           hours: hours,
           category: app ? app.category : 'Uncategorized'

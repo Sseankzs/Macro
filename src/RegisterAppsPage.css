@@ -107,6 +107,31 @@
   transform: none !important;
 }
 
+/* Add App Button - macOS Style */
+.add-app-button {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  color: #007AFF !important;
+  font-size: 24px !important;
+  font-weight: 300 !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  line-height: 1 !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: auto !important;
+}
+
+.add-app-button:hover {
+  color: #0056CC !important;
+}
+
+.add-app-button:active {
+  transform: scale(0.95);
+}
+
 
 .dropdown-container {
   position: relative;
@@ -252,6 +277,17 @@
   gap: 0.5rem;
 }
 
+/* Detected apps grid for main page */
+.detected-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.detected-apps-grid .modal-empty {
+  grid-column: 1 / -1;
+}
+
 .detected-app-item {
   display: flex;
   align-items: center;
@@ -260,6 +296,7 @@
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
+  min-width: 0;
 }
 
 .detected-app-item.disabled {
@@ -319,18 +356,15 @@
 }
 
 .add-icon-button {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid #e5e7eb;
-  background: white;
+  background: none;
+  border: none;
   color: #007aff;
   font-size: 20px;
   font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   cursor: pointer;
+  padding: 0;
+  width: auto;
+  height: auto;
 }
 .dropdown-menu {
   position: absolute;
@@ -726,43 +760,26 @@
 
 /* Delete Button - iOS Style */
 .delete-button {
-  position: absolute;
-  top: -8px;
-  left: -8px;
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  min-height: 24px;
-  border-radius: 50%;
-  background: white;
+  background: none;
+  border: none;
   color: #ff3b30;
-  border: 1px solid #e2e8f0;
-  font-size: 1rem;
+  font-size: 20px;
   font-weight: 600;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  box-shadow: none;
-  line-height: 1;
-  z-index: 10;
   padding: 0;
   margin: 0;
-  box-sizing: border-box;
-  text-align: center;
+  width: auto;
+  height: auto;
+  line-height: 1;
+  transition: color 0.2s ease;
 }
 
 .delete-button:hover {
-  background: white;
   color: #d70015;
-  transform: scale(1.1);
-  box-shadow: none;
 }
 
 .delete-button:active {
   transform: scale(0.95);
-  box-shadow: none;
 }
 
 

@@ -35,6 +35,7 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
   // Controlled via env flag in src/config.ts
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [applications, setApplications] = useState<Map<string, Application>>(new Map());
+  const [missingApps, setMissingApps] = useState<Map<string, string>>(new Map()); // app_id -> temporary name
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -50,9 +51,13 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
   const [detectedOS, setDetectedOS] = useState<string>('Unknown');
 
   useEffect(() => {
-    fetchTimeEntries();
-    fetchApplications();
-    fetchDetectedOS();
+    // Fetch applications first, then time entries, so the lookup map is ready
+    const loadData = async () => {
+      await fetchApplications();
+      await fetchTimeEntries();
+      await fetchDetectedOS();
+    };
+    loadData();
   }, [timeFilter]);
 
   const fetchTimeEntries = async () => {
@@ -83,6 +88,22 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
       const entries = await invoke<TimeEntry[]>('get_my_time_entries', {
         limit: 1000 // Get more entries for filtering
       });
+
+      // Debug: log app_ids from time entries
+      console.log('📋 LogsPage: Fetched time entries:', entries.length);
+      const entriesWithAppIds = entries.filter(e => e.app_id);
+      const entriesWithoutAppIds = entries.filter(e => !e.app_id);
+      console.log('📋 LogsPage: Entries with app_id:', entriesWithAppIds.length);
+      console.log('📋 LogsPage: Entries without app_id:', entriesWithoutAppIds.length);
+      
+      // Then fetch missing apps if needed
+      if (entriesWithAppIds.length > 0) {
+        const uniqueAppIds = [...new Set(entriesWithAppIds.map(e => e.app_id).filter((id): id is string => !!id))];
+        console.log('📋 LogsPage: Unique app_ids in entries:', uniqueAppIds);
+        
+        // Fetch any missing apps by their IDs (will use current applications state)
+        fetchMissingApps(uniqueAppIds);
+      }
 
       // Filter by date if needed
       let filteredEntries = entries;
@@ -119,12 +140,15 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
         }));
         const appMap = new Map<string, Application>();
         mapped.forEach(app => appMap.set(app.id, app));
+        console.log('📱 LogsPage: Loaded applications (bypass mode):', Array.from(appMap.entries()));
         setApplications(appMap);
       } else {
         // Original DB-backed fetch (restored when bypass is disabled)
         const apps = await invoke<Application[]>('get_my_applications');
         const appMap = new Map<string, Application>();
         apps.forEach(app => appMap.set(app.id, app));
+        console.log('📱 LogsPage: Loaded applications from DB:', apps.length, 'apps');
+        console.log('📱 LogsPage: Application IDs:', apps.map(a => ({ id: a.id, name: a.name, process_name: a.process_name })));
         setApplications(appMap);
       }
     } catch (error) {
@@ -141,9 +165,86 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
     }
   };
 
+  // Fetch applications that are referenced in time entries but not in our applications map
+  const fetchMissingApps = async (appIds: string[]) => {
+    try {
+      // Use the current applications state
+      setApplications(currentApps => {
+        const existingIds = Array.from(currentApps.keys());
+        
+        // Find apps we need to fetch
+        const missingIds = appIds.filter(id => !existingIds.includes(id));
+        
+        if (missingIds.length === 0) {
+          return currentApps; // All apps are already loaded
+        }
+
+        console.log('📱 LogsPage: Fetching missing apps:', missingIds);
+
+        // Fetch all apps to find the missing ones
+        invoke<Application[]>('get_my_applications').then(allApps => {
+          const allAppsMap = new Map<string, Application>();
+          allApps.forEach(app => allAppsMap.set(app.id, app));
+
+          // Update applications map with any newly found apps
+          setApplications(prevApps => {
+            const updatedMap = new Map(prevApps);
+            missingIds.forEach(appId => {
+              const app = allAppsMap.get(appId);
+              if (app) {
+                updatedMap.set(app.id, app);
+                console.log('✅ LogsPage: Found missing app:', app.name);
+              } else {
+                // App doesn't exist (probably deleted) - mark as deleted
+                // We'll show "Deleted App" instead of the ID
+                setMissingApps(prev => new Map(prev).set(appId, 'deleted'));
+                console.log('⚠️ LogsPage: App not found for ID:', appId, '- marking as deleted');
+              }
+            });
+            return updatedMap;
+          });
+        }).catch(error => {
+          console.error('Failed to fetch missing apps:', error);
+        });
+
+        return currentApps; // Return unchanged for now, will update async
+      });
+    } catch (error) {
+      console.error('Failed to fetch missing apps:', error);
+    }
+  };
+
   const getAppName = (appId?: string) => {
-    if (!appId) return 'Unknown App';
-    return applications.get(appId)?.name || 'Unknown App';
+    if (!appId) {
+      return 'Unknown App';
+    }
+    
+    // First check if we have the app in our applications map
+    const app = applications.get(appId);
+    if (app) {
+      return app.name;
+    }
+    
+    // Check if we have a temporary name for a deleted/missing app
+    const tempName = missingApps.get(appId);
+    if (tempName) {
+      // If it's marked as deleted, show "Deleted App"
+      if (tempName === 'deleted') {
+        return 'Deleted App';
+      }
+      // Otherwise use the stored name
+      return tempName;
+    }
+    
+    // If we have the app_id but haven't loaded it yet
+    if (applications.size > 0) {
+      // Apps are loaded, so this one is missing/deleted
+      // Show "Deleted App" instead of the ID
+      return 'Deleted App';
+    }
+    
+    // No apps loaded yet, show loading state
+    return 'Loading...';
   };
 
   const formatDuration = (seconds?: number) => {
