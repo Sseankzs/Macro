@@ -742,6 +742,8 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   };
 
   // Colors for the charts
+  const colors = ['#5DADE2', '#48C9B0', '#52BE80', '#F4D03F', '#EB984E'];
+
   // Helper function to format time with full words
   const formatTimeWithFullWords = (hours: number): string => {
     if (hours >= 1) {
@@ -922,7 +924,194 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     }
   };
 
-  // Calculate task statistics and format date/time
+  // Commented out old loadAllData function
+  /*
+  // Load all dashboard data from backend
+  const loadAllData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      if (isTauri()) {
+        // Load mandatory data in parallel for faster loading
+        const [userData, timeEntries, detectedOS] = await Promise.all([
+          invoke('get_current_user') as Promise<{ name: string }>,
+          invoke('get_my_time_entries', { limit: 1000 }) as Promise<TimeEntry[]>,
+          invoke('get_detected_os') as Promise<string>
+        ]);
+
+        console.log('✅ Dashboard data loaded:', {
+          user: userData,
+          timeEntries: timeEntries.length
+        });
+
+        // Set user data
+        setUser(userData);
+        
+        // Set detected OS for debugging
+        setDetectedOS(detectedOS);
+
+        // Choose applications source
+        let appsForCalc: Application[] = [];
+        if (BYPASS_DB_APPS) {
+          // Bypass DB apps: use detected processes as applications (temporary)
+          // const dbApplications = await invoke('get_my_applications') as Application[]; // original code
+          type DetectedProcess = { name: string; process_name: string };
+          const detected = await invoke<DetectedProcess[]>('get_running_processes');
+          appsForCalc = detected.map((p, idx) => ({
+            id: `detected-${idx}`,
+            name: p.name || p.process_name,
+            process_name: p.process_name,
+            category: undefined,
+            icon_path: undefined,
+            is_tracked: true,
+            user_id: 'local',
+            created_at: undefined,
+            updated_at: undefined,
+            last_used: undefined,
+          }));
+        } else {
+          // Use registered apps from DB
+          const dbApplications = await invoke('get_my_applications') as Application[];
+          appsForCalc = dbApplications;
+        }
+
+        // Set applications in local state
+        setApplications(appsForCalc);
+
+        // Update global cache
+        updateCache({
+          applications: appsForCalc,
+          timeEntries: timeEntries,
+          dataCacheTimestamp: Date.now()
+        });
+
+        // Calculate hours data from loaded time entries
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const todayHours = calculateHoursForDate(timeEntries, today);
+        const yesterdayHours = calculateHoursForDate(timeEntries, yesterday);
+
+        // Calculate hours for this week (Monday to Sunday)
+        const weekStart = new Date(today);
+        const dayOfWeek = today.getDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        weekStart.setDate(today.getDate() - daysToMonday);
+        weekStart.setHours(0, 0, 0, 0);
+
+        let weekHours = 0;
+        for (let i = 0; i < 7; i++) {
+          const weekDay = new Date(weekStart);
+          weekDay.setDate(weekStart.getDate() + i);
+          weekHours += calculateHoursForDate(timeEntries, weekDay);
+        }
+
+        // Set hours data
+        setHoursTrackedToday(todayHours);
+        setHoursTrackedYesterday(yesterdayHours);
+        setHoursTrackedThisWeek(weekHours);
+
+        // Cache the calculated hours data
+        updateCache({
+          hoursData: {
+            today: todayHours,
+            yesterday: yesterdayHours,
+            week: weekHours
+          },
+          hoursCacheTimestamp: Date.now()
+        });
+
+        // Calculate table data based on selected time period
+        const aggregatedData = aggregateTimeByApplication(timeEntries, appsForCalc, selectedTimePeriod);
+        setApplicationTimeData(aggregatedData);
+
+        // Calculate category data for pie chart
+        const categoryChartData = aggregateTimeByCategory(timeEntries, applications, selectedTimePeriod);
+        setCategoryData(categoryChartData);
+
+        // Calculate daily time data for bar chart
+        const dailyTimeResult = aggregateDailyTimeByCategory(timeEntries, applications, selectedTimePeriod);
+        if (Array.isArray(dailyTimeResult)) {
+          setDailyTimeData([]);
+          setChartCategories([]);
+        } else {
+          setDailyTimeData(dailyTimeResult.data);
+          setChartCategories(dailyTimeResult.categories);
+        }
+
+        // Calculate most used app for the past week
+        const mostUsedAppData = findMostUsedApp(timeEntries, appsForCalc);
+        setMostUsedApp(mostUsedAppData);
+
+        // Update cache with calculated data
+        updateCache({
+          applicationTimeData: aggregatedData,
+          mostUsedApp: mostUsedAppData
+        });
+
+        // Fetch current activity
+        await fetchCurrentActivity();
+
+        console.log('✅ Dashboard initialization complete');
+      } else {
+        // Browser mode - minimal setup for development
+        console.log('Running in browser mode - using minimal setup');
+        setUser({ name: 'Dev User' });
+        
+        // Browser mode - minimal setup, data will come from real backend
+        setApplications([]);
+        setApplicationTimeData([]);
+        setMostUsedApp(null);
+        setCurrentActivity(null);
+      }
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err);
+      setError('Failed to load dashboard data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Commented out old useEffects
+  /*
+  useEffect(() => {
+    loadAllData();
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    // Update current activity duration every second (local calculation)
+    const durationInterval = setInterval(() => {
+      updateCurrentActivityDuration();
+    }, 1000);
+    
+    // Fetch current activity every 10 seconds
+    const activityInterval = setInterval(() => {
+      fetchCurrentActivity();
+    }, 10000);
+
+    return () => {
+      clearInterval(durationInterval);
+      clearInterval(activityInterval);
+    };
+  }, []);
+
+  // Commented out old handler
+  // const handleTimePeriodChange = (period: 'today' | 'week' | 'month') => {
+  //   console.log('🔄 Time period changing from', selectedTimePeriod, 'to', period);
+  //   setSelectedTimePeriod(period);
+  // };
+
   const taskStats = getTaskStats();
   const now = new Date();
   const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'short' });
@@ -1281,6 +1470,347 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
               </div>
               
             </div>
+          </div>
+                {/* Current Activity Card - Leftmost */}
+                <div className="stat-card ios-card current-activity-card">
+                  <div className="stat-header">
+                    <h3>Current Activity</h3>
+                    <span className="stat-period">
+                      {currentActivity ? 'active' : 'idle'}
+                    </span>
+                  </div>
+                  <div className="stat-main">
+                    {currentActivity ? (
+                      <div className="activity-info-simple">
+                        <div className="app-icon">💻</div>
+                        <div className="app-name">{currentActivity?.app_name || ''}</div>
+                      </div>
+                    ) : (
+                      <div className="no-activity">
+                        <span className="no-activity-text">No tracked apps running</span>
+                        <span className="no-activity-subtitle">Enable tracking for apps in Register Apps</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="stat-subtitle">
+                    {currentActivity ? (
+                      <div className="activity-info-horizontal">
+                        <div className="app-category">{currentActivity?.app_category || ''}</div>
+                        <div className="app-time">
+                          {formatDurationWithFullWords(currentActivity?.duration_hours || 0, (currentActivity?.duration_minutes || 0) % 60)}
+                        </div>
+                        <div className="apps-count">
+                          {(currentActivity?.active_apps_count || 0) > 1 
+                            ? `${currentActivity?.active_apps_count || 0} apps active`
+                            : 'Active'
+                          }
+                        </div>
+                      </div>
+                    ) : (
+                      'Enable app tracking'
+                    )}
+                  </div>
+                </div>
+
+                <div className="stat-card ios-card">
+                  <div className="stat-header">
+                    <h3>Tracked Today</h3>
+                    <span className="stat-period">vs yesterday</span>
+                  </div>
+                  <div className="stat-main">
+                    <>
+                      <span className="stat-number stat-number-small">
+                        {formatTimeWithShortUnits(hoursTrackedToday)}
+                      </span>
+                      <span className={`stat-change ${hoursTrackedToday >= hoursTrackedYesterday ? 'positive' : 'negative'}`}>
+                        {hoursTrackedToday >= hoursTrackedYesterday ? '+' : ''}{(hoursTrackedToday - hoursTrackedYesterday).toFixed(1)} hours
+                      </span>
+                    </>
+                  </div>
+                  <div className="stat-subtitle">
+                    This week: {hoursTrackedThisWeek.toFixed(1)} hours
+                  </div>
+                </div>
+                
+                <div className="stat-card ios-card">
+                  <div className="stat-header">
+                    <h3>Most Used App</h3>
+                    <span className="stat-period">past week</span>
+                  </div>
+                    <div className="stat-main">
+                      {mostUsedApp ? (
+                        <div className="activity-info-simple">
+                          <div className="app-icon">💻</div>
+                          <div className="app-name">{mostUsedApp?.application || ''}</div>
+                        </div>
+                      ) : (
+                        <div className="no-data-state">
+                          <span className="no-data-text">No tracked apps</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="stat-subtitle">
+                      {mostUsedApp ? (
+                        <div className="activity-info-horizontal">
+                          <div className="app-time">{mostUsedApp?.time || ''}</div>
+                        </div>
+                      ) : 'Enable app tracking'}
+                    </div>
+                </div>
+                
+                <div className="stat-card ios-card">
+                  <div className="stat-header">
+                    <h3>Tasks Completed</h3>
+                    <span className="stat-period">with AI summaries</span>
+                  </div>
+                  <div className="stat-main">
+                    <span className="stat-number">3</span>
+                    <div className="task-summary">
+                      <span className="task-item">2 features added</span>
+                      <span className="task-item">1 bug fixed</span>
+                    </div>
+                  </div>
+                  <div className="stat-subtitle">Productivity boost</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Middle Section - Charts & Visuals */}
+            <div className="charts-section">
+              <div className="charts-header">
+                <h2 className="section-title">Time Distribution</h2>
+                <div className="chart-controls">
+                  <button 
+                    className={`chart-btn ${selectedTimePeriod === 'today' ? 'active' : ''}`}
+                    onClick={() => setSelectedTimePeriod('today')}
+                    title="Press 1 for Today"
+                  >
+                    Today <span className="hotkey">1</span>
+                  </button>
+                  <button 
+                    className={`chart-btn ${selectedTimePeriod === 'week' ? 'active' : ''}`}
+                    onClick={() => setSelectedTimePeriod('week')}
+                    title="Press 2 for Week"
+                  >
+                    Week <span className="hotkey">2</span>
+                  </button>
+                  <button 
+                    className={`chart-btn ${selectedTimePeriod === 'month' ? 'active' : ''}`}
+                    onClick={() => setSelectedTimePeriod('month')}
+                    title="Press 3 for Month"
+                  >
+                    Month <span className="hotkey">3</span>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Charts Grid - Two column layout */}
+              <div className="charts-grid">
+                {/* Left Column - Charts */}
+                <div className="charts-left-column">
+                  
+                  {/* Monthly Calendar - Show for Month view only */}
+                  {selectedTimePeriod === 'month' && (
+                    <div className="chart-card ios-card">
+                      <div className="chart-header">
+                        <h3>Monthly Activity Calendar</h3>
+                      </div>
+                      <MonthlyCalendar 
+                        timeEntries={cache.timeEntries || []}
+                        applications={applications}
+                        maxHoursPerDay={12}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Daily Time Distribution Chart - Show for Week view only */}
+                  {selectedTimePeriod === 'week' && (
+                    <div className="chart-card ios-card">
+                      <div className="chart-header">
+                        <h3>Daily Distribution</h3>
+                        <span className="chart-period">{selectedTimePeriod}</span>
+                      </div>
+                      {loading ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">Loading daily data...</span>
+                        </div>
+                      ) : dailyTimeData.length === 0 || chartCategories.length === 0 ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">No daily data</span>
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                            Track some applications to see daily breakdown
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="nivo-container" ref={(el) => {
+                          if (el) {
+                            // Add custom animation after chart renders
+                            setTimeout(() => {
+                              const bars = el.querySelectorAll('svg g[data-testid="bar"] rect');
+                              bars.forEach((bar, index) => {
+                                (bar as HTMLElement).style.transformOrigin = 'bottom';
+                                (bar as HTMLElement).style.animation = `growFromBottom 1.2s ease-out forwards`;
+                                (bar as HTMLElement).style.animationDelay = `${index * 0.1}s`;
+                                (bar as HTMLElement).style.opacity = '0';
+                              });
+                            }, 100);
+                          }
+                        }}>
+                          <ResponsiveBar
+                            key={`bar-${windowWidth}-${selectedTimePeriod}`}
+                            data={dailyTimeData}
+                            keys={chartCategories.length > 0 ? chartCategories : ['uncategorized']}
+                            indexBy="day"
+                            margin={windowWidth > 768 ? 
+                              { top: 20, right: 20, bottom: 40, left: 60 } : 
+                              { top: 20, right: 10, bottom: 30, left: 50 }
+                            }
+                            padding={windowWidth > 768 ? 0.2 : 0.1}
+                            colors={colors}
+                            borderColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
+                            axisTop={null}
+                            axisRight={null}
+                            axisBottom={{
+                              tickSize: windowWidth > 768 ? 5 : 3,
+                              tickPadding: windowWidth > 768 ? 5 : 3,
+                              tickRotation: windowWidth > 768 ? 0 : -45,
+                              legend: 'Day',
+                              legendPosition: 'middle',
+                              legendOffset: windowWidth > 768 ? 32 : 25,
+                            }}
+                            axisLeft={{
+                              tickSize: windowWidth > 768 ? 5 : 3,
+                              tickPadding: windowWidth > 768 ? 5 : 3,
+                              tickRotation: 0,
+                              legend: 'Hours',
+                              legendPosition: 'middle',
+                              legendOffset: windowWidth > 768 ? -50 : -40,
+                            }}
+                            labelSkipWidth={windowWidth > 768 ? 12 : 8}
+                            labelSkipHeight={windowWidth > 768 ? 12 : 8}
+                            labelTextColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
+                            animate={false}
+                            enableLabel={false}
+                            enableGridX={false}
+                            enableGridY={true}
+                            tooltip={({ id, value, indexValue }) => (
+                              <div style={{
+                                background: 'rgba(0, 0, 0, 0.8)',
+                                color: 'white',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                border: 'none'
+                              }}>
+                                <strong>{indexValue}</strong><br />
+                                {String(id).replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: {value}h
+                              </div>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* App Category Breakdown Chart - Show for Today view only */}
+                  {selectedTimePeriod === 'today' && (
+                    <div className="chart-card ios-card">
+                      <div className="chart-header">
+                        <h3>App Category Breakdown</h3>
+                        <span className="chart-period">{selectedTimePeriod}</span>
+                      </div>
+                      {loading ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">Loading categories...</span>
+                        </div>
+                      ) : categoryData.length === 0 ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">No category data</span>
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                            Track some applications to see category breakdown
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="nivo-pie-container">
+                          <ResponsivePie
+                            key={`pie-${windowWidth}-${selectedTimePeriod}`}
+                            data={categoryData}
+                            margin={windowWidth > 768 ? 
+                              { top: 20, right: 120, bottom: 20, left: 20 } : 
+                              { top: 20, right: 20, bottom: 20, left: 20 }
+                            }
+                            innerRadius={windowWidth > 768 ? 0 : 0}
+                            padAngle={windowWidth > 768 ? 0.7 : 0.5}
+                            cornerRadius={windowWidth > 768 ? 3 : 2}
+                            colors={colors}
+                            borderWidth={1}
+                            borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
+                            arcLabelsSkipAngle={10}
+                            arcLabelsTextColor="#333333"
+                            animate={true}
+                            enableArcLabels={false}
+                            tooltip={({ datum }) => (
+                              <div style={{
+                                background: 'rgba(0, 0, 0, 0.8)',
+                                color: 'white',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                border: 'none'
+                              }}>
+                                <strong>{datum.label}</strong><br />
+                                {datum.value}% ({formatTimeWithFullWords(datum.data.hours || 0)})
+                              </div>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                </div>
+                
+                {/* Right Column - Top Applications Table */}
+                <div className="charts-right-column">
+                  <div className="chart-card ios-card top-apps-table-card">
+                    <div className="chart-header">
+                      <h3>Top Applications</h3>
+                      <span className="chart-period">{selectedTimePeriod}</span>
+                    </div>
+                    <div className="top-apps-table" key={`table-${selectedTimePeriod}`}>
+                      <div className="table-header-row">
+                        <span className="table-header-cell app-name-header">Application</span>
+                        <span className="table-header-cell time-header">Time</span>
+                      </div>
+                      <div className="table-body">
+                        {loading ? (
+                          <div className="table-empty-state">
+                            <span className="empty-text">Loading applications...</span>
+                          </div>
+                        ) : applicationTimeData.length === 0 ? (
+                          <div className="table-empty-state">
+                            <span className="empty-text">No tracked applications</span>
+                            <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                              Debug: Apps({applications.length}) TimeEntries({cache.timeEntries?.length || 0}) Period({selectedTimePeriod})
+                            </div>
+                          </div>
+                        ) : (
+                          applicationTimeData.map((item, index) => (
+                            <div key={`${selectedTimePeriod}-${index}-${item.application}`} className="table-data-row">
+                              <div className="table-data-cell app-name-cell">
+                                <div className="app-icon-small">💻</div>
+                                <span className="app-name">{item.application}</span>
+                              </div>
+                              <span className="table-data-cell time-cell">{item.time}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            */}
           </div>
         )}
       </div>
