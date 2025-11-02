@@ -1,6 +1,6 @@
 use crate::database::{Database, TimeEntry, Application};
 // Use the currently logged-in user id managed by runtime state, not a hardcoded default
-use crate::current_user::get_current_user_id;
+use crate::current_user::get_current_user_id_or_error;
 use serde_json::json;
 
 /// Database helper methods for platform trackers
@@ -9,8 +9,9 @@ pub struct DatabaseHelpers;
 impl DatabaseHelpers {
     /// Get all active time entries for the current user
     pub async fn get_active_time_entries(db: &Database) -> Result<Vec<TimeEntry>, String> {
+        let user_id = get_current_user_id_or_error()?;
         let url = format!("{}/rest/v1/time_entries?user_id=eq.{}&is_active=eq.true", 
-                         db.base_url, get_current_user_id());
+                         db.base_url, user_id);
         let response = db.client
             .get(&url)
             .header("apikey", &db.api_key)
@@ -33,8 +34,9 @@ impl DatabaseHelpers {
     /// Start a new time entry for an application
     pub async fn start_time_entry(db: &Database, app: &Application) -> Result<String, String> {
         // First check if there's already an active time entry for this app
+        let user_id = get_current_user_id_or_error()?;
         let existing_entry_url = format!("{}/rest/v1/time_entries?user_id=eq.{}&app_id=eq.{}&is_active=eq.true", 
-                                       db.base_url, get_current_user_id(), app.id);
+                                       db.base_url, user_id, app.id);
         let existing_response = db.client
             .get(&existing_entry_url)
             .header("apikey", &db.api_key)
@@ -56,7 +58,7 @@ impl DatabaseHelpers {
         // No existing active entry found, create a new one
         let time_entry_data = json!({
             "id": uuid::Uuid::new_v4().to_string(),
-            "user_id": get_current_user_id(),
+            "user_id": user_id,
             "app_id": app.id,
             "task_id": null,
             "start_time": chrono::Utc::now().to_rfc3339(),
@@ -145,8 +147,9 @@ impl DatabaseHelpers {
 
     /// Get tracked applications for the current user
     pub async fn get_tracked_applications(db: &Database) -> Result<Vec<Application>, String> {
+        let user_id = get_current_user_id_or_error()?;
         let url = format!("{}/rest/v1/applications?user_id=eq.{}&is_tracked=eq.true", 
-                         db.base_url, get_current_user_id());
+                         db.base_url, user_id);
         let response = db.client
             .get(&url)
             .header("apikey", &db.api_key)

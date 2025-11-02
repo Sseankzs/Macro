@@ -6,19 +6,21 @@ use std::time::{Duration, Instant};
 use sysinfo::System;
 use tokio::time::interval;
 
+#[cfg(target_os = "windows")]
+use winapi::um::{
+    winuser::{GetForegroundWindow, GetWindowThreadProcessId},
+    tlhelp32::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS},
+    handleapi::CloseHandle,
+};
+
 pub struct WindowsTracker {
     base: BaseTracker,
-    system: System,
 }
 
 impl WindowsTracker {
     pub fn new(db: Database) -> Self {
-        let mut system = System::new_all();
-        system.refresh_all();
-        
         Self {
             base: BaseTracker::new(db),
-            system,
         }
     }
 
@@ -35,38 +37,104 @@ impl WindowsTracker {
     }
 
     async fn get_active_processes(&self) -> Result<Vec<String>, String> {
+        // Get all running processes, not just those with CPU usage
         let mut system = System::new_all();
         system.refresh_processes();
         
-        let mut active_processes = Vec::new();
+        let mut running_processes = Vec::new();
         for (_, process) in system.processes() {
-            if process.cpu_usage() > 0.0 {
-                let name = process.name();
-                active_processes.push(name.to_string());
-            }
+            let name = process.name();
+            running_processes.push(name.to_string());
         }
         
-        Ok(active_processes)
+        Ok(running_processes)
     }
 
     async fn get_foreground_process(&self) -> Result<Option<String>, String> {
-        // For Windows, we'll use the process with highest CPU usage as a proxy for foreground
-        let mut system = System::new_all();
-        system.refresh_processes();
-        
-        let mut max_cpu = 0.0;
-        let mut foreground_process = None;
-        
-        for (_, process) in system.processes() {
-            let cpu_usage = process.cpu_usage();
-            if cpu_usage > max_cpu {
-                max_cpu = cpu_usage;
-                let name = process.name();
-                foreground_process = Some(name.to_string());
-            }
+        #[cfg(target_os = "windows")]
+        {
+            Ok(self.get_focused_window_process_name())
         }
         
-        Ok(foreground_process)
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Fallback for non-Windows platforms - use CPU usage method
+            let mut system = System::new_all();
+            system.refresh_processes();
+            
+            let mut max_cpu = 0.0;
+            let mut foreground_process = None;
+            
+            for (_, process) in system.processes() {
+                let cpu_usage = process.cpu_usage();
+                if cpu_usage > max_cpu {
+                    max_cpu = cpu_usage;
+                    let name = process.name();
+                    foreground_process = Some(name.to_string());
+                }
+            }
+            
+            Ok(foreground_process)
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn get_focused_window_process_name(&self) -> Option<String> {
+        unsafe {
+            // Get the handle of the currently focused window
+            let hwnd = GetForegroundWindow();
+            if hwnd.is_null() {
+                return None;
+            }
+
+            // Get the process ID of the window
+            let mut process_id: u32 = 0;
+            GetWindowThreadProcessId(hwnd, &mut process_id as *mut u32);
+            
+            if process_id == 0 {
+                return None;
+            }
+
+            // Create a snapshot of all processes
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snapshot == winapi::um::handleapi::INVALID_HANDLE_VALUE {
+                return None;
+            }
+
+            let mut process_entry = PROCESSENTRY32W {
+                dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                cntUsage: 0,
+                th32ProcessID: 0,
+                th32DefaultHeapID: 0,
+                th32ModuleID: 0,
+                cntThreads: 0,
+                th32ParentProcessID: 0,
+                pcPriClassBase: 0,
+                dwFlags: 0,
+                szExeFile: [0; 260],
+            };
+
+            // Find the process with the matching PID
+            if Process32FirstW(snapshot, &mut process_entry) != 0 {
+                loop {
+                    if process_entry.th32ProcessID == process_id {
+                        // Convert the process name from wide string to String
+                        let process_name = String::from_utf16_lossy(&process_entry.szExeFile)
+                            .trim_end_matches('\0')
+                            .to_string();
+                        CloseHandle(snapshot);
+                        return Some(process_name);
+                    }
+                    
+                    if Process32NextW(snapshot, &mut process_entry) == 0 {
+                        break;
+                    }
+                }
+            }
+            
+            CloseHandle(snapshot);
+            None
+        }
     }
 
     async fn categorize_app(&self, app_name: &str) -> String {
@@ -133,7 +201,6 @@ impl WindowsTracker {
                         state: Arc::clone(&state_clone),
                         db: db_clone.clone(),
                     },
-                    system: System::new_all(),
                 };
                 
                 if let Err(e) = tracker.update_activity().await {
@@ -163,72 +230,69 @@ impl WindowsTracker {
     }
 
     pub async fn update_activity(&self) -> Result<(), String> {
-        let active_processes = self.get_active_processes().await?;
         let foreground_process = self.get_foreground_process().await?;
         
         let mut state = self.base.state.lock().await;
         state.last_activity_time = Instant::now();
         
-        // Update app_last_seen for all active processes
-        for process_name in &active_processes {
-            state.app_last_seen.insert(process_name.clone(), Instant::now());
-        }
-        
-        // Remove processes that are no longer active
-        let current_time = Instant::now();
-        state.app_last_seen.retain(|_, last_seen| {
-            current_time.duration_since(*last_seen) < Duration::from_secs(30)
-        });
-        
         // Get tracked applications from database
         let tracked_apps = DatabaseHelpers::get_tracked_applications(&self.base.db).await?;
         
-        // Check which tracked apps are currently running
+        // Initialize counters
         let mut apps_started_count = 0;
         let mut apps_stopped_count = 0;
         let mut should_invalidate_cache = false;
         
-        for app in &tracked_apps {
-            let is_running = active_processes.contains(&app.process_name);
-            let was_tracked = state.active_apps.contains_key(&app.process_name);
+        // Check if the current foreground app is in the tracked list
+        let foreground_is_tracked = if let Some(ref fg_process) = foreground_process {
+            tracked_apps.iter().any(|app| app.process_name == *fg_process)
+        } else {
+            false
+        };
+        
+        // If foreground app is not tracked, stop all active tracking
+        if !foreground_is_tracked && !state.active_apps.is_empty() {
+            println!("Foreground app '{}' is not in tracked list, stopping all active tracking", 
+                     foreground_process.as_deref().unwrap_or("None"));
             
-            if is_running && !was_tracked {
-                // App started - create time entry
-                match DatabaseHelpers::start_time_entry(&self.base.db, app).await {
-                    Ok(entry_id) => {
-                        state.active_apps.insert(app.process_name.clone(), entry_id.clone());
-                        state.app_last_seen.insert(app.process_name.clone(), Instant::now());
-                        apps_started_count += 1;
-                        should_invalidate_cache = true;
-                        println!("Started tracking for {} (entry_id: {})", app.name, entry_id);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to start time entry for {}: {}", app.name, e);
-                    }
-                }
-            } else if !is_running && was_tracked {
-                // App stopped - end time entry
-                if let Some(entry_id) = state.active_apps.remove(&app.process_name) {
-                    let entry_id_clone = entry_id.clone();
-                    let _ = DatabaseHelpers::end_time_entry(&self.base.db, entry_id).await;
-                    state.app_last_seen.remove(&app.process_name);
-                    apps_stopped_count += 1;
-                    should_invalidate_cache = true;
-                    println!("Stopped tracking for {} (entry_id: {})", app.name, entry_id_clone);
-                }
+            // End all active time entries
+            let entry_ids_to_end: Vec<String> = state.active_apps.values().cloned().collect();
+            let stopped_count = entry_ids_to_end.len();
+            state.active_apps.clear();
+            
+            for entry_id in &entry_ids_to_end {
+                let _ = DatabaseHelpers::end_time_entry(&self.base.db, entry_id.clone()).await;
+                println!("Ended time entry: {}", entry_id);
             }
+            
+            should_invalidate_cache = true;
+            apps_stopped_count += stopped_count;
         }
         
-        // Clean up any active entries for apps that are no longer running
-        let mut entries_to_end = Vec::new();
-        for (process_name, entry_id) in &state.active_apps {
-            if !active_processes.contains(process_name) {
-                entries_to_end.push(entry_id.clone());
+        // If foreground app is tracked, ensure it's being tracked
+        if foreground_is_tracked {
+            if let Some(ref fg_process) = foreground_process {
+                if let Some(tracked_app) = tracked_apps.iter().find(|app| app.process_name == *fg_process) {
+                    let was_tracked = state.active_apps.contains_key(&tracked_app.process_name);
+                    
+                    if !was_tracked {
+                        // Foreground app is tracked but not currently being tracked - start tracking
+                        match DatabaseHelpers::start_time_entry(&self.base.db, tracked_app).await {
+                            Ok(entry_id) => {
+                                state.active_apps.insert(tracked_app.process_name.clone(), entry_id.clone());
+                                state.app_last_seen.insert(tracked_app.process_name.clone(), Instant::now());
+                                apps_started_count += 1;
+                                should_invalidate_cache = true;
+                                println!("Started tracking for {} (entry_id: {})", tracked_app.name, entry_id);
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to start time entry for {}: {}", tracked_app.name, e);
+                            }
+                        }
+                    }
+                    // If already tracking, continue tracking (no action needed)
+                }
             }
-        }
-        
-        for entry_id in entries_to_end {
-            let _ = DatabaseHelpers::end_time_entry(&self.base.db, entry_id).await;
         }
         
         // Invalidate cache if any apps started or stopped tracking

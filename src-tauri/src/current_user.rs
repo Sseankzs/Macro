@@ -16,17 +16,25 @@ pub fn set_current_user_id(user_id: String) {
     }
 }
 
-/// Get the current user ID, returns the hardcoded default if no user is logged in
-pub fn get_current_user_id() -> String {
+/// Get the current user ID, returns None if no user is logged in
+pub fn get_current_user_id() -> Option<String> {
     if let Ok(current_id) = CURRENT_USER_ID.lock() {
         if let Some(ref id) = *current_id {
-            return id.clone();
+            return Some(id.clone());
         }
     }
     
-    // Fallback to hardcoded default user for development
-    log::warn!("No current user ID set, falling back to default user");
-    crate::default_user::get_default_user_id()
+    // No fallback - return None if no user is logged in
+    log::info!("No current user ID set - user needs to log in");
+    None
+}
+
+/// Get the current user ID as a string, or return an error if no user is logged in
+pub fn get_current_user_id_or_error() -> Result<String, String> {
+    match get_current_user_id() {
+        Some(id) => Ok(id),
+        None => Err("No user is currently logged in".to_string()),
+    }
 }
 
 /// Clear the current user ID (for logout)

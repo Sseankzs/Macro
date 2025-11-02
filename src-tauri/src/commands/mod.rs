@@ -3,7 +3,6 @@ mod ai_assistant;
 use crate::database::{
     Application, Database, Project, Task, Team, TimeEntry, User, WorkspaceMemberRecord,
 };
-use crate::default_user::get_default_user;
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -560,7 +559,7 @@ pub async fn get_all_teams(db: State<'_, Database>) -> Result<Vec<Team>, String>
 
 #[tauri::command]
 pub async fn get_my_workspaces(db: State<'_, Database>) -> Result<Vec<Team>, String> {
-    let user_id = crate::current_user::get_current_user_id();
+    let user_id = crate::current_user::get_current_user_id_or_error()?;
 
     let memberships = fetch_memberships_for_user(&db, &user_id).await?;
     let mut workspace_ids: Vec<String> = memberships
@@ -1509,27 +1508,28 @@ pub async fn ensure_default_user_exists(db: State<'_, Database>) -> Result<User,
 #[tauri::command]
 pub async fn get_current_user(db: State<'_, Database>) -> Result<User, String> {
     // Resolve the current user id from runtime state and fetch the user
-    // from the database. If not found, fall back to the default dev user
-    // so the UI continues to work in development.
-    let user_id = crate::current_user::get_current_user_id();
+    // from the database. Return error if no user is logged in.
+    let user_id = match crate::current_user::get_current_user_id() {
+        Some(id) => id,
+        None => return Err("No user is currently logged in".to_string()),
+    };
+    
     match get_user(db, user_id).await {
         Ok(Some(user)) => Ok(user),
-        Ok(None) => {
-            log::warn!("Current user id not found in database, falling back to default user");
-            Ok(get_default_user())
-        }
+        Ok(None) => Err("Current user not found in database".to_string()),
         Err(e) => Err(e),
     }
 }
 
 #[tauri::command]
 pub async fn get_current_user_id() -> Result<String, String> {
-    Ok(crate::current_user::get_current_user_id())
+    crate::current_user::get_current_user_id_or_error()
 }
 
 #[tauri::command]
 pub async fn get_my_applications(db: State<'_, Database>) -> Result<Vec<Application>, String> {
-    get_applications_by_user(db, crate::current_user::get_current_user_id()).await
+    let user_id = crate::current_user::get_current_user_id_or_error()?;
+    get_applications_by_user(db, user_id).await
 }
 
 #[tauri::command]
@@ -1562,7 +1562,8 @@ pub async fn get_my_time_entries(
     db: State<'_, Database>,
     limit: Option<u32>,
 ) -> Result<Vec<TimeEntry>, String> {
-    get_time_entries_by_user(db, crate::current_user::get_current_user_id(), limit).await
+    let user_id = crate::current_user::get_current_user_id_or_error()?;
+    get_time_entries_by_user(db, user_id, limit).await
 }
 
 #[tauri::command]
@@ -1583,7 +1584,8 @@ pub async fn create_my_application(
     }
     
     println!("Creating application: {} ({})", name, process_name);
-    create_application(db, name, process_name, crate::current_user::get_current_user_id(), icon_path, category, is_tracked).await
+    let user_id = crate::current_user::get_current_user_id_or_error()?;
+    create_application(db, name, process_name, user_id, icon_path, category, is_tracked).await
 }
 
 #[tauri::command]
@@ -1671,7 +1673,8 @@ pub async fn create_my_time_entry(
     duration_seconds: Option<i64>,
     is_active: Option<bool>,
 ) -> Result<TimeEntry, String> {
-    create_time_entry(db, crate::current_user::get_current_user_id(), app_id, task_id, start_time, end_time, duration_seconds, is_active).await
+    let user_id = crate::current_user::get_current_user_id_or_error()?;
+    create_time_entry(db, user_id, app_id, task_id, start_time, end_time, duration_seconds, is_active).await
 }
 
 // ===== PROCESS DETECTION COMMANDS =====

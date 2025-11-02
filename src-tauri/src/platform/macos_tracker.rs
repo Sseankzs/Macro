@@ -265,29 +265,43 @@ impl MacOSTracker {
             // Get tracked applications from database
             let tracked_apps = DatabaseHelpers::get_tracked_applications(&self.base.db).await?;
             
-            // Find the tracked app that matches the current app (case-insensitive, ignore .app)
-            if let Some(tracked_app) = tracked_apps.iter().find(|app| names_match(&app.process_name, &app_name)) {
-                // Check if we're already tracking this app
-                if let Some(_entry_id) = state.active_apps.get(&app_name) {
-                    // Continue existing entry
-                    // No need to do anything, entry continues
-                } else {
-                    // Start new entry
-                    match DatabaseHelpers::start_time_entry(&self.base.db, tracked_app).await {
-                        Ok(entry_id) => {
-                            state.active_apps.insert(app_name.clone(), entry_id.clone());
-                            println!("Started tracking for {} (entry_id: {})", tracked_app.name, entry_id);
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to start time entry for {}: {}", tracked_app.name, e);
+            // Check if the current app is in the tracked list
+            let app_is_tracked = tracked_apps.iter().any(|app| names_match(&app.process_name, &app_name));
+            
+            // If app is not tracked, stop all active tracking
+            if !app_is_tracked && !state.active_apps.is_empty() {
+                println!("Current app '{}' is not in tracked list, stopping all active tracking", app_name);
+                
+                // End all active time entries
+                let entry_ids_to_end: Vec<String> = state.active_apps.values().cloned().collect();
+                state.active_apps.clear();
+                
+                for entry_id in &entry_ids_to_end {
+                    let _ = DatabaseHelpers::end_time_entry(&self.base.db, entry_id.clone()).await;
+                    println!("Ended time entry: {}", entry_id);
+                }
+            }
+            
+            // Only start/continue tracking if the current app is in the tracked list
+            if app_is_tracked {
+                // Find the tracked app that matches the current app (case-insensitive, ignore .app)
+                if let Some(tracked_app) = tracked_apps.iter().find(|app| names_match(&app.process_name, &app_name)) {
+                    // Check if we're already tracking this app
+                    if let Some(_entry_id) = state.active_apps.get(&app_name) {
+                        // Continue existing entry
+                        // No need to do anything, entry continues
+                    } else {
+                        // Start new entry
+                        match DatabaseHelpers::start_time_entry(&self.base.db, tracked_app).await {
+                            Ok(entry_id) => {
+                                state.active_apps.insert(app_name.clone(), entry_id.clone());
+                                println!("Started tracking for {} (entry_id: {})", tracked_app.name, entry_id);
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to start time entry for {}: {}", tracked_app.name, e);
+                            }
                         }
                     }
-                }
-            } else {
-                // App is not in tracked apps, end any existing entry
-                if let Some(entry_id) = state.active_apps.remove(&app_name) {
-                    let _ = DatabaseHelpers::end_time_entry(&self.base.db, entry_id).await;
-                    println!("Stopped tracking for {} (not in tracked apps)", app_name);
                 }
             }
             
