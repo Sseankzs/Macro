@@ -7,6 +7,7 @@ import RegisterAppsPage from './RegisterAppsPage'
 import MetricBuilderPage from './MetricBuilderPage'
 import LogsPage from './LogsPage'
 import AIAssistantPage from './AIAssistantPage'
+import DebugPage from './DebugPage.tsx'
 import { DashboardCacheProvider } from './contexts/DashboardCacheContext'
 import { CurrentUserProvider } from './contexts/CurrentUserContext'
 import { invoke } from '@tauri-apps/api/core'
@@ -27,7 +28,7 @@ function App() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant'>('dashboard')
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug'>('dashboard')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,7 +62,7 @@ function App() {
           if (dbInitialized) {
             console.log('Database initialized successfully')
             // Fetch current user info once and then mark logged in. This avoids
-            // re-checking the user's role on every page change.
+            // re-fetching membership data on every page change.
             try {
               const currentUser = await invoke('get_current_user') as any;
               // store in provider via passing initialUser when rendering below
@@ -79,10 +80,20 @@ function App() {
         }
       } else {
         // Running in browser - development mode
-        console.log('Running in browser mode - auto-login for development')
+  console.log('Running in browser mode - auto-login for development');
         // Simulate successful login for development
         // Provide a default dev current user so feature gating works in browser
-        (window as any).__INITIAL_CURRENT_USER__ = { role: 'owner', id: 'dev', name: 'Dev User' };
+        (window as any).__INITIAL_CURRENT_USER__ = {
+          id: 'dev',
+          name: 'Dev User',
+          email: 'dev@example.com',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          image_url: null,
+          team_id: 'dev-workspace',
+          workspace_id: 'dev-workspace',
+          membership_role: 'owner',
+        };
         setIsLoggedIn(true)
       }
     } catch (error) {
@@ -128,7 +139,7 @@ function App() {
         }
       } else {
         // Running in browser - development mode
-        console.log('Running in browser mode - simulating sign up')
+  console.log('Running in browser mode - simulating sign up');
         alert('Account created successfully! Please log in.')
         setIsSignUp(false)
         setEmail('')
@@ -257,7 +268,7 @@ function App() {
     }
   }
 
-  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => {
+  const handlePageChange = (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => {
     setCurrentPage(page)
   }
 
@@ -291,6 +302,9 @@ function App() {
         case 'i':
           handlePageChange('ai-assistant');
           break;
+        case 'd':
+          handlePageChange('debug');
+          break;
         case 'f':
           // Focus search or filter functionality (could be enhanced later)
           console.log('Search/Filter shortcut triggered');
@@ -311,8 +325,8 @@ function App() {
 
   // Show dashboard if logged in
   if (isLoggedIn) {
-    // Use the initial current user fetched after login (if any) and pass it
-    // into the CurrentUserProvider so children can read role without extra calls.
+  // Use the initial current user fetched after login (if any) and pass it
+  // into the CurrentUserProvider so children can read membership metadata without extra calls.
     const initialUser = (window as any).__INITIAL_CURRENT_USER__ ?? null;
 
     return (
@@ -338,6 +352,9 @@ function App() {
         )}
         {currentPage === 'dashboard' && (
           <Dashboard onLogout={handleLogout} onPageChange={handlePageChange} />
+        )}
+        {currentPage === 'debug' && (
+          <DebugPage onLogout={handleLogout} onPageChange={handlePageChange} />
         )}
       </DashboardCacheProvider>
       </CurrentUserProvider>

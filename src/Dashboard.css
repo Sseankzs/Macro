@@ -1377,3 +1377,27 @@ input, select, textarea {
     opacity: 1;
   }
 }
+
+/* Debug page specific styles */
+.debug-main-content {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-bottom: 2rem;
+  height: calc(100vh - 2rem) !important;
+  max-height: calc(100vh - 2rem) !important;
+}
+
+.debug-main-content .tasks-container {
+  padding: 0 1rem;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.debug-main-content table {
+  margin-top: 1rem !important;
+  margin-bottom: 1.5rem !important;
+}
+
+.debug-main-content section {
+  margin-bottom: 2rem !important;
+}

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './LogsPage.css';
 import Sidebar from './Sidebar';
 import { formatTimestamp } from './utils';
 import { BYPASS_DB_APPS } from './config';
+import PageSourceBadge from './components/PageSourceBadge';
 
 interface TimeEntry {
   id: string;
@@ -27,7 +28,7 @@ interface Application {
 
 interface LogsPageProps {
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => void;
 }
 
 function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
@@ -201,6 +202,7 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
 
   return (
     <div className="dashboard-container">
+      <PageSourceBadge source="src/LogsPage.tsx" />
       <Sidebar currentPage="logs" onLogout={onLogout} onPageChange={onPageChange} />
       
       <div className="main-content">

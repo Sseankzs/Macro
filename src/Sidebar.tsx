@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import './Dashboard.css';
-import { useCurrentUser } from './contexts/CurrentUserContext';
 import { useTheme } from './useTheme';
 
 interface SidebarProps {
-  currentPage: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant';
+  currentPage: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug';
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => void;
 }
 
 // Detect if running on macOS
@@ -24,12 +23,6 @@ function getShortcutParts(key: string): { modifier: string; key: string } {
 }
 
 function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
-  const isTauri = () => {
-    return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
-  }
-
-  const [allowedTeams, setAllowedTeams] = useState<boolean | null>(isTauri() ? null : true);
-  const { currentUser } = useCurrentUser();
   const { theme, toggleTheme } = useTheme();
   useEffect(() => {
     // Add class to body when sidebar is mounted
@@ -40,23 +33,6 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
       document.body.classList.remove('dashboard-active');
     };
   }, []);
-
-  // Compute allowedTeams from the context once the currentUser is set.
-  useEffect(() => {
-    if (!isTauri()) {
-      setAllowedTeams(true);
-      return;
-    }
-
-    if (!currentUser) {
-      // still loading or not set; keep null to avoid flicker
-      setAllowedTeams(null);
-      return;
-    }
-
-    const roleLc = typeof currentUser.role === 'string' ? currentUser.role.toLowerCase() : '';
-    setAllowedTeams(roleLc === 'owner' || roleLc === 'manager');
-  }, [currentUser]);
 
   const navItems = [
     {
@@ -78,19 +54,6 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
         <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M9 11l3 3l8-8"/>
           <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9s4.03-9 9-9s9 4.03 9 9z"/>
-        </svg>
-      )
-    },
-    {
-      id: 'teams' as const,
-      label: 'Teams',
-      shortcut: getShortcutParts('E'),
-      icon: (
-        <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
       )
     },
@@ -129,6 +92,21 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
           <path d="M9 21h6M12 3a6 6 0 0 1 6 6c0 2.22-1.206 4.16-3 5.196V17a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-2.804A5.978 5.978 0 0 1 6 9a6 6 0 0 1 6-6z"/>
         </svg>
       )
+    },
+    {
+      id: 'debug' as const,
+      label: 'Debug',
+      shortcut: getShortcutParts('D'),
+      icon: (
+        <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="18" height="14" rx="2" ry="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+          <circle cx="8" cy="7" r="1"/>
+          <circle cx="12" cy="7" r="1"/>
+          <circle cx="16" cy="7" r="1"/>
+        </svg>
+      )
     }
   ];
 
@@ -151,17 +129,6 @@ function Sidebar({ currentPage, onLogout, onPageChange }: SidebarProps) {
         <div className="nav-section">
           <ul>
             {navItems
-              .filter(item => {
-                if (item.id === 'teams') {
-                  // In Tauri, hide until we know the role (allowedTeams === null)
-                  if (isTauri()) {
-                    return allowedTeams === true;
-                  }
-                  // In browser/dev mode, show teams
-                  return true;
-                }
-                return true;
-              })
               .map((item) => {
                 const tooltipText = `${item.label} (${item.shortcut.modifier}+${item.shortcut.key})`;
                 return (

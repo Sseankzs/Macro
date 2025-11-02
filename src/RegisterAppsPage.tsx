@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { formatForTable } from './utils';
 import { useDashboardCache } from './contexts/DashboardCacheContext';
 import { BYPASS_DB_APPS } from './config';
+import PageSourceBadge from './components/PageSourceBadge';
 
 interface App {
   id: string;
@@ -31,7 +32,7 @@ interface DetectedApp {
 
 interface RegisterAppsPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => void;
 }
 
 function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
@@ -877,6 +878,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
 
   return (
     <div className="dashboard-container">
+      <PageSourceBadge source="src/RegisterAppsPage.tsx" />
       <Sidebar 
         currentPage="register-apps" 
         onLogout={onLogout} 

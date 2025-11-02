@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import './TaskPage.css';
 import Sidebar from './Sidebar';
 import AddTaskModal from './AddTaskModal';
+import AddTeamPopup from './AddTeamPopup';
 import TaskDetailModal from './TaskDetailModal';
 import { invoke } from '@tauri-apps/api/core';
 import { TasksSkeletonGrid } from './components/LoadingComponents';
 import { E2EE_TASKS } from './config';
 import { decryptTextForTeam, isEncrypted } from './crypto/e2ee';
+import { supabase } from './lib/supabase';
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -86,6 +88,8 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [showAddTeamPopup, setShowAddTeamPopup] = useState(false);
+  const [addTeamAnchor, setAddTeamAnchor] = useState<HTMLElement | null>(null);
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [clickPosition, setClickPosition] = useState<{ x: number; y: number } | undefined>();
@@ -97,28 +101,77 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [membersSidebarCollapsed, setMembersSidebarCollapsed] = useState(false);
   const [teamMemberCounts, setTeamMemberCounts] = useState<Record<string, number>>({});
 
-  // Load all data from backend
-  const loadAllData = async () => {
+  // Load teams data independently (only teams user is a member of)
+  const loadTeamsData = async () => {
     try {
-      setLoading(true);
-      setError(null);
-      
       if (isTauri()) {
-        // Load tasks, teams, projects, and all members in parallel
-        const [backendTasks, backendTeams, backendProjects, backendMembers] = await Promise.all([
+        // Use get_my_workspaces to only get teams the user is a member of
+        const userWorkspaces = await invoke('get_my_workspaces') as Team[];
+        console.log('✅ User workspaces loaded successfully:', userWorkspaces);
+        
+        // Normalize team names (handle both 'name' and 'team_name' fields)
+        const normalizedTeams = userWorkspaces.map(team => ({
+          ...team,
+          team_name: team.team_name ?? (team as any)?.name ?? 'Untitled workspace',
+        }));
+        
+        setTeams(normalizedTeams);
+        
+        // Select first team if available and none selected
+        if (normalizedTeams.length > 0 && !selectedTeam) {
+          setSelectedTeam(normalizedTeams[0].id);
+        }
+      } else {
+        // Browser mode - use mock data
+        const mockTeams: Team[] = [
+          { id: '1', team_name: 'Frontend Team' },
+          { id: '2', team_name: 'Backend Team' },
+        ];
+        setTeams(mockTeams);
+        if (mockTeams.length > 0 && !selectedTeam) {
+          setSelectedTeam(mockTeams[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('❌ Failed to load teams:', err);
+      // Teams failure doesn't prevent other data from loading
+    }
+  };
+
+  // Load projects data independently
+  const loadProjectsData = async () => {
+    try {
+      if (isTauri()) {
+        const backendProjects = await invoke('get_all_projects') as Project[];
+        console.log('✅ Projects loaded successfully:', backendProjects);
+        setProjects(backendProjects);
+      } else {
+        // Browser mode - use mock data
+        const mockProjects: Project[] = [
+          { id: 'project-1', name: 'Frontend App', team_id: '1' },
+          { id: 'project-2', name: 'Backend API', team_id: '2' },
+        ];
+        setProjects(mockProjects);
+      }
+    } catch (err) {
+      console.error('❌ Failed to load projects:', err);
+      // Projects failure doesn't prevent other data from loading
+    }
+  };
+
+  // Load tasks data independently
+  const loadTasksData = async () => {
+    try {
+      if (isTauri()) {
+        const [backendTasks, backendMembers, backendProjects] = await Promise.all([
           invoke('get_my_tasks') as Promise<BackendTask[]>,
-          invoke('get_all_teams') as Promise<Team[]>,
-          invoke('get_all_projects') as Promise<Project[]>,
-          invoke('get_all_users') as Promise<TeamMember[]>
+          invoke('get_all_users') as Promise<TeamMember[]>,
+          invoke('get_all_projects') as Promise<Project[]>
         ]);
-
-        console.log('=== BACKEND DATA DEBUG ===');
+        
+        console.log('✅ Tasks and related data loaded successfully');
         console.log('Backend tasks:', JSON.stringify(backendTasks, null, 2));
-        console.log('Backend teams:', JSON.stringify(backendTeams, null, 2));
-        console.log('Backend projects:', JSON.stringify(backendProjects, null, 2));
-        console.log('Backend members:', JSON.stringify(backendMembers, null, 2));
-        console.log('========================');
-
+        
         // Transform tasks with proper assignee and project names
         const transformedTasks: Task[] = await Promise.all(backendTasks.map(async (task) => {
           const assignee = backendMembers.find(member => member.id === task.assignee_id);
@@ -160,25 +213,8 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         console.log('=====================================');
         
         setAllTasks(transformedTasks);
-        setTeams(backendTeams);
-        setProjects(backendProjects);
-        
-        // Select first team if available and none selected
-        if (backendTeams.length > 0 && !selectedTeam) {
-          setSelectedTeam(backendTeams[0].id);
-        }
       } else {
         // Browser mode - use mock data
-        const mockTeams: Team[] = [
-          { id: '1', team_name: 'Frontend Team' },
-          { id: '2', team_name: 'Backend Team' },
-        ];
-        
-        const mockProjects: Project[] = [
-          { id: 'project-1', name: 'Frontend App', team_id: '1' },
-          { id: 'project-2', name: 'Backend API', team_id: '2' },
-        ];
-        
         const mockTasks: Task[] = [
           {
             id: '1',
@@ -223,21 +259,32 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             project_name: 'Backend API'
           }
         ];
-
         setAllTasks(mockTasks);
-        setTeams(mockTeams);
-        setProjects(mockProjects);
-        
-        if (mockTeams.length > 0 && !selectedTeam) {
-          setSelectedTeam(mockTeams[0].id);
-        }
       }
     } catch (err) {
-      console.error('Failed to load data:', err);
-      setError('Failed to load tasks and team data. Please try again.');
-    } finally {
-      setLoading(false);
+      console.error('❌ Failed to load tasks:', err);
+      // Tasks failure doesn't prevent other data from loading
     }
+  };
+
+  // Refresh functions for individual data types
+  const refreshTeams = () => loadTeamsData();
+  const refreshProjects = () => loadProjectsData();
+  const refreshTasks = () => loadTasksData();
+
+  // Load all data from backend with independent error handling
+  const loadAllData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    // Load all data independently - if one fails, others can still succeed
+    await Promise.allSettled([
+      loadTeamsData(),
+      loadProjectsData(), 
+      loadTasksData()
+    ]);
+
+    setLoading(false);
   };
 
   // Load team members when team is selected
@@ -290,56 +337,164 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     loadTeamMembers(selectedTeam);
   }, [selectedTeam]);
 
+  // Load workspace members and calculate team member counts
+  const loadWorkspaceMembersAndCounts = async () => {
+    try {
+      if (isTauri()) {
+        // Get all workspace members
+        const workspaceMembers = await invoke('get_all_workspace_members') as any[];
+        console.log('✅ Workspace members loaded for counting:', workspaceMembers);
+        
+        // Count members per workspace/team
+        const counts: Record<string, number> = {};
+        const workspaceIdSet = new Set(teams.map(team => team.id));
+        
+        (workspaceMembers ?? []).forEach((member) => {
+          const workspaceId = member.workspace_id ?? member.team_id ?? null;
+          if (workspaceId && workspaceIdSet.has(workspaceId)) {
+            counts[workspaceId] = (counts[workspaceId] ?? 0) + 1;
+          }
+        });
+        
+        // Set counts for all teams, defaulting to 0 if no members found
+        teams.forEach(team => {
+          if (!(team.id in counts)) {
+            counts[team.id] = 0;
+          }
+        });
+        
+        console.log('Team member counts calculated:', counts);
+        console.log('Teams processed:', teams.map(t => `${t.team_name} (${t.id})`));
+        setTeamMemberCounts(counts);
+      } else {
+        // Browser mode - use mock data
+        const counts: Record<string, number> = {};
+        teams.forEach(team => {
+          // Generate a consistent mock number based on team ID
+          const hash = team.id.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+          }, 0);
+          counts[team.id] = (Math.abs(hash) % 8) + 3; // 3-10 members
+        });
+        setTeamMemberCounts(counts);
+      }
+    } catch (err) {
+      console.error('❌ Failed to load workspace members for counting:', err);
+      // Fallback to zero counts
+      const counts: Record<string, number> = {};
+      teams.forEach(team => {
+        counts[team.id] = 0;
+      });
+      setTeamMemberCounts(counts);
+    }
+  };
+
+  // Refresh function for member counts
+  const refreshMemberCounts = () => loadWorkspaceMembersAndCounts();
+
   // Update member counts when teams change
   useEffect(() => {
-    const counts: Record<string, number> = {};
-    teams.forEach(team => {
-      // Use mock numbers for now: random between 3-10 members
-      // If we have actual member data, prefer it, otherwise use mock
-      const actualMembers = teamMembers.filter(m => m.team_id === team.id);
-      if (actualMembers.length > 0) {
-        counts[team.id] = actualMembers.length;
-      } else {
-        // Generate a consistent mock number based on team ID
-        const hash = team.id.split('').reduce((a, b) => {
-          a = ((a << 5) - a) + b.charCodeAt(0);
-          return a & a;
-        }, 0);
-        counts[team.id] = (Math.abs(hash) % 8) + 3; // 3-10 members
-      }
-    });
-    setTeamMemberCounts(counts);
-  }, [teams, teamMembers]);
+    if (teams.length > 0) {
+      loadWorkspaceMembersAndCounts();
+    } else {
+      setTeamMemberCounts({});
+    }
+  }, [teams]);
 
-  // Function to add a new team (skeleton - mock implementation for now)
-  const handleAddTeam = () => {
-    // Find the next team number
-    const existingTeamNumbers = teams
-      .map(team => {
-        const match = team.team_name.match(/^Team (\d+)$/);
-        return match ? parseInt(match[1]) : 0;
-      })
-      .filter(num => num > 0);
-    
-    const nextNumber = existingTeamNumbers.length > 0 
-      ? Math.max(...existingTeamNumbers) + 1 
-      : 1;
-    
-    const newTeamName = `Team ${nextNumber}`;
-    
-    // Create mock team (no backend call for now)
-    const mockTeam: Team = {
-      id: `team-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      team_name: newTeamName,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    // Add to local state
-    setTeams(prev => [...prev, mockTeam]);
-    
-    // Set as selected team
-    setSelectedTeam(mockTeam.id);
+  // Function to open the add team popup
+  const handleAddTeam = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setAddTeamAnchor(event.currentTarget);
+    setShowAddTeamPopup(true);
+  };
+
+  // Function to create a new team
+  const handleCreateTeam = async (teamData: { name: string; description?: string }) => {
+    try {
+      console.log('🚀 Starting team creation process...', teamData);
+      
+      // Step 1: Get current user from local backend
+      console.log('📍 Step 1: Getting current user from local backend...');
+      const currentUser = await invoke('get_current_user') as { id: string; name: string };
+      console.log('✅ Current user retrieved:', currentUser);
+      
+      // Step 2: Create workspace in Supabase
+      console.log('📍 Step 2: Creating workspace in Supabase...');
+      const { data: workspace, error: workspaceError } = await supabase
+        .from('workspaces')
+        .insert({
+          name: teamData.name,
+          description: teamData.description,
+          created_by: currentUser.id
+        })
+        .select('*')
+        .single();
+
+      if (workspaceError) {
+        console.error('❌ Supabase workspace creation failed:', workspaceError);
+        throw new Error(`Failed to create workspace: ${workspaceError.message} (Supabase Error: ${workspaceError.code || 'Unknown'})`);
+      }
+      console.log('✅ Workspace created in Supabase:', workspace);
+
+      // Step 3: Add current user as workspace member
+      console.log('📍 Step 3: Adding user as workspace member in Supabase...');
+      const { error: memberError } = await supabase
+        .from('workspace_members')
+        .insert({
+          user_id: currentUser.id,
+          workspace_id: workspace.id,
+          role: 'owner'
+        });
+
+      if (memberError) {
+        console.error('❌ Supabase member insertion failed:', memberError);
+        throw new Error(`Failed to add user to workspace: ${memberError.message} (Supabase Error: ${memberError.code || 'Unknown'})`);
+      }
+      console.log('✅ User added as workspace member');
+
+      // Step 4: Update local state
+      console.log('📍 Step 4: Updating local UI state...');
+      const newTeam: Team = {
+        id: workspace.id,
+        team_name: workspace.name,
+        created_at: workspace.created_at,
+        updated_at: workspace.updated_at
+      };
+
+      // Add to local state
+      setTeams(prev => [...prev, newTeam]);
+      
+      // Set as selected team
+      setSelectedTeam(newTeam.id);
+      
+      // Update team member counts
+      setTeamMemberCounts(prev => ({
+        ...prev,
+        [newTeam.id]: 1
+      }));
+      
+      console.log('✅ Team created successfully:', newTeam);
+      console.log('🎉 Team creation process completed!');
+    } catch (error) {
+      console.error('❌ Team creation failed:', error);
+      
+      // Enhance error message with source context
+      if (error instanceof Error) {
+        const errorMsg = error.message;
+        if (errorMsg.includes('get_current_user') || errorMsg.includes('invoke')) {
+          // This is a local backend error
+          throw new Error(`Local Backend Error: ${errorMsg}. The Tauri backend may not be responding properly.`);
+        } else if (errorMsg.includes('Supabase Error') || errorMsg.includes('Failed to create workspace') || errorMsg.includes('Failed to add user to workspace')) {
+          // This is already a Supabase error with context
+          throw error;
+        } else {
+          // Generic error - add more context
+          throw new Error(`${errorMsg}. Please check both your internet connection (for Supabase) and that the local backend is running.`);
+        }
+      } else {
+        throw new Error('Unknown error during team creation. Please check console for details.');
+      }
+    }
   };
 
   useEffect(() => {
@@ -804,9 +959,20 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         onClose={() => setShowAddTaskModal(false)}
         onTaskAdded={() => {
           setShowAddTaskModal(false);
-          // Reload tasks
-          loadAllData();
+          // Reload tasks only
+          refreshTasks();
         }}
+      />
+      
+      {/* Add Team Popup */}
+      <AddTeamPopup 
+        isOpen={showAddTeamPopup}
+        onClose={() => {
+          setShowAddTeamPopup(false);
+          setAddTeamAnchor(null);
+        }}
+        onSubmit={handleCreateTeam}
+        anchorElement={addTeamAnchor}
       />
       
       {/* Task Detail Modal */}
@@ -817,7 +983,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         clickPosition={clickPosition}
         onTaskUpdated={() => {
           // Reload tasks to reflect changes
-          loadAllData();
+          refreshTasks();
         }}
       />
       

@@ -100,6 +100,8 @@ pub fn run() {
             create_team,
             get_team,
             get_all_teams,
+            get_my_workspaces,
+            get_all_workspace_members,
             delete_team,
             // Project commands
             create_project,

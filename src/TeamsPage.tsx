@@ -6,6 +6,7 @@ import AddMemberModal from './AddMemberPage';
 import { invoke } from '@tauri-apps/api/core';
 import { useCurrentUser } from './contexts/CurrentUserContext';
 import { TeamsSkeletonGrid, LoadingOverlay } from './components/LoadingComponents';
+import PageSourceBadge from './components/PageSourceBadge';
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -17,6 +18,17 @@ interface Team {
   team_name: string;
   created_at?: string;
   updated_at?: string;
+  created_by?: string | null;
+  description?: string | null;
+}
+
+interface BackendUser {
+  id: string;
+  name: string;
+  email?: string | null;
+  team_id?: string | null;
+  workspace_id?: string | null;
+  image_url?: string | null;
 }
 
 interface TeamMember {
@@ -34,7 +46,7 @@ interface TeamMember {
 
 interface TeamsPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'debug' | 'ai-assistant') => void;
 }
 
 function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
@@ -75,49 +87,48 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
       setError(null);
       
       if (isTauri()) {
-        // Load teams from database
-        const teamsData = await invoke('get_all_teams') as Team[];
-        console.log('Teams loaded:', teamsData);
-        setTeams(teamsData);
+        // Load only teams (workspaces) the current user belongs to or created
+        const teamsData = await invoke('get_my_workspaces') as Team[];
+        console.log('User workspaces loaded:', teamsData);
 
-        // Load users for the current user's team only (RLS should also apply).
-        // Always attempt server-side filtering via get_users_by_team. Pass the
-        // team_id even if it's null so the server can use `team_id=is.null`.
-        let users: any[] = [];
-        try {
-          const teamId = (currentUser as any)?.team_id ?? null;
-          if (teamId === null) {
-            // Current user is not assigned to a team -> do not fetch any users
-            console.log('Current user has no team_id; skipping fetch of team members');
-            users = [];
-          } else {
-            users = await invoke('get_users_by_team', { teamId: teamId }) as any[];
-            console.log('Team users loaded via get_users_by_team:', users);
-          }
-        } catch (err) {
-          console.error('Failed to load team users via get_users_by_team, falling back to get_all_users:', err);
-          // As a last resort, fetch all users and filter client-side to be safe.
-          const all = await invoke('get_all_users') as any[];
-          const currTeam = (currentUser as any)?.team_id ?? null;
-          users = all.filter(u => (u.team_id ?? null) === currTeam);
+        const normalizedTeams = (teamsData ?? [])
+          .map(team => ({
+            ...team,
+            team_name: team.team_name || (team as any)?.name || 'Untitled workspace'
+          }))
+          .sort((a, b) => a.team_name.localeCompare(b.team_name));
+
+        setTeams(normalizedTeams);
+        setTeamMembers([]);
+
+        if (normalizedTeams.length === 0) {
+          return;
         }
 
-        // Transform users to team members
-        const members: TeamMember[] = users.map(user => ({
-          id: user.id,
-          name: user.name,
-          position: (typeof user.role === 'string' && user.role.toLowerCase() === 'owner') ? 'Team Owner' :
-                   (typeof user.role === 'string' && user.role.toLowerCase() === 'manager') ? 'Team Manager' : 'Team Member',
-          inProgressTasks: 0, // TODO: Get real data
-          hoursTracked: 0, // TODO: Get real data
-          currentTask: 'No current task', // TODO: Get real data
-          currentUrl: '',
-          team_id: user.team_id,
-          avatar: getRandomEmoji(user.id),
-          status: 'online' as const
-        }));
+        const memberFetches = normalizedTeams.map(async (team) => {
+          try {
+            const teamUsers = await invoke('get_users_by_team', { teamId: team.id }) as BackendUser[];
+            console.log(`Members loaded for team ${team.id}:`, teamUsers);
+            return teamUsers.map(user => ({
+              id: user.id,
+              name: user.name,
+              position: 'Team Member',
+              inProgressTasks: 0, // TODO: Get real data
+              hoursTracked: 0, // TODO: Get real data
+              currentTask: 'No current task', // TODO: Get real data
+              currentUrl: '',
+              team_id: user.team_id ?? user.workspace_id ?? team.id,
+              avatar: getRandomEmoji(user.id),
+              status: 'online' as const
+            } as TeamMember));
+          } catch (memberErr) {
+            console.error(`Failed to load team users for team ${team.id}:`, memberErr);
+            return [] as TeamMember[];
+          }
+        });
 
-        setTeamMembers(members);
+        const membersByTeam = await Promise.all(memberFetches);
+        setTeamMembers(membersByTeam.flat());
       } else {
         // Browser mode - use mock data
         const mockTeams: Team[] = [
@@ -178,17 +189,8 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
           // Use currentUser from context (populated once at login) to avoid
           // re-querying the backend on every page change.
           console.log('Current user for Teams page (from context):', currentUser);
-          const roleLc = typeof currentUser?.role === 'string' ? currentUser.role.toLowerCase() : '';
-          if (roleLc === 'owner' || roleLc === 'manager') {
-            setAuthorized(true);
-            await loadTeamsAndMembers();
-          } else {
-            // Not authorized to see teams/other users
-            setAuthorized(false);
-            // Ensure we don't load teams/users
-            setTeams([]);
-            setTeamMembers([]);
-          }
+          setAuthorized(true);
+          await loadTeamsAndMembers();
         } else {
           // Browser/dev mode: allow viewing
           setAuthorized(true);
@@ -326,28 +328,12 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
     }
   };
 
-  // Delete team function
-  const handleDeleteTeam = (teamId: string, teamName: string) => {
-    setDeleteTarget({ type: 'team', id: teamId, name: teamName });
-    setShowDeleteConfirm(true);
-  };
-
   const getStatusColor = (status: TeamMember['status']) => {
     switch (status) {
       case 'online': return '#34c759';
       case 'away': return '#ff9500';
       case 'busy': return '#ff3b30';
       case 'offline': return '#8e8e93';
-      default: return '#8e8e93';
-    }
-  };
-
-  const getCategoryColor = (category: TeamMember['category']) => {
-    switch (category) {
-      case 'frontend': return '#007aff';
-      case 'backend': return '#ff9500';
-      case 'design': return '#af52de';
-      case 'management': return '#8e8e93';
       default: return '#8e8e93';
     }
   };
@@ -427,7 +413,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
     >
       <div className="column-content">
         {getMembersByTeam(team.id).map(member => (
-          <TeamMemberCard key={member.id} member={member} />
+          <TeamMemberCard key={`${team.id}-${member.id}`} member={member} />
         ))}
       </div>
     </div>
@@ -442,7 +428,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
     >
       <div className="column-content">
         {getUnassignedMembers().map(member => (
-          <TeamMemberCard key={member.id} member={member} />
+          <TeamMemberCard key={`unassigned-${member.id}`} member={member} />
         ))}
       </div>
     </div>
@@ -450,6 +436,7 @@ function TeamsPage({ onLogout, onPageChange }: TeamsPageProps) {
 
   return (
     <div className="dashboard-container">
+      <PageSourceBadge source="src/TeamsPage.tsx" />
       <Sidebar 
         currentPage="teams" 
         onLogout={onLogout} 

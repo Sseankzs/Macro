@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import './MetricBuilderPage.css';
 import Sidebar from './Sidebar';
 import { formatTimestamp } from './utils';
+import PageSourceBadge from './components/PageSourceBadge';
 
 interface Message {
   id: string;
@@ -24,7 +25,7 @@ interface Metric {
 
 interface MetricBuilderPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => void;
 }
 
 function MetricBuilderPage({ onLogout, onPageChange }: MetricBuilderPageProps) {
@@ -269,6 +270,7 @@ function MetricBuilderPage({ onLogout, onPageChange }: MetricBuilderPageProps) {
 
   return (
     <div className="dashboard-container">
+      <PageSourceBadge source="src/MetricBuilderPage.tsx" />
       <Sidebar 
         currentPage="metric-builder" 
         onLogout={onLogout} 

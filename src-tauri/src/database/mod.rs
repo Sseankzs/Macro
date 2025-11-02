@@ -1,4 +1,4 @@
-use anyhow::Result;
+﻿use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use reqwest::Client;
@@ -24,9 +24,13 @@ impl Database {
         // Test the connection by making a simple request
         let url = format!("{}/rest/v1/", self.base_url);
         log::info!("Testing connection to: {}", url);
-        log::info!("Using API key: {}...", &self.api_key[..std::cmp::min(10, self.api_key.len())]);
-        
-        let response = self.client
+        log::info!(
+            "Using API key: {}...",
+            &self.api_key[..std::cmp::min(10, self.api_key.len())]
+        );
+
+        let response = self
+            .client
             .get(&url)
             .header("apikey", &self.api_key)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -41,21 +45,33 @@ impl Database {
                     log::info!("Database connection successful");
                     Ok(true)
                 } else {
-                    let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                    log::error!("Database connection failed with status {}: {}", status, error_text);
+                    let error_text = resp
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "Unknown error".to_string());
+                    log::error!(
+                        "Database connection failed with status {}: {}",
+                        status,
+                        error_text
+                    );
                     Ok(false)
                 }
-            },
+            }
             Err(e) => {
                 log::error!("Database connection error: {}", e);
                 Ok(false)
-            },
+            }
         }
     }
 
-    pub async fn execute_query(&self, table: &str, method: &str, data: Option<serde_json::Value>) -> Result<serde_json::Value> {
+    pub async fn execute_query(
+        &self,
+        table: &str,
+        method: &str,
+        data: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value> {
         let url = format!("{}/rest/v1/{}", self.base_url, table);
-        
+
         let mut request = match method {
             "GET" => self.client.get(&url),
             "POST" => self.client.post(&url),
@@ -75,10 +91,13 @@ impl Database {
         }
 
         let response = request.send().await?;
-        
+
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(anyhow::anyhow!("HTTP error {}: {}", status, error_text));
         }
 
@@ -92,37 +111,48 @@ impl Database {
 pub struct User {
     pub id: String, // UUID as string
     pub name: String,
-    pub email: Option<String>, // Make optional to match database schema
-    pub team_id: Option<String>,
-    pub current_project_id: Option<String>,
-    // Make role optional to tolerate schemas that don't use roles
-    pub role: Option<UserRole>,
-    pub created_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
-    pub updated_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
-    pub image_url: Option<String>, // Add missing field from database
+    pub email: Option<String>, // Optional email field
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>, // Database default now()
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>, // Database default now()
+    pub image_url: Option<String>, // Optional image URL
+    #[serde(default)]
+    pub role: Option<String>, // Derived from workspace membership
+    #[serde(default)]
+    pub workspace_id: Option<String>, // Derived from workspace membership
+    #[serde(default)]
+    pub team_id: Option<String>, // Alias for workspace_id for frontend compatibility
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum UserRole {
-    Owner,
-    Manager,
-    Member,
+pub struct WorkspaceMemberRecord {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub joined_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
     pub id: String,
+    #[serde(alias = "name")]
     pub team_name: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_by: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub id: String,
     pub name: String,
-    pub team_id: Option<String>,
+    pub workspace_id: Option<String>, // Changed from team_id to workspace_id
     pub manager_id: Option<String>,
     pub description: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -135,6 +165,7 @@ pub struct Task {
     pub title: String,
     pub description: Option<String>,
     pub project_id: Option<String>,
+    pub workspace_id: Option<String>, // Add workspace support
     pub assignee_id: Option<String>,
     pub status: TaskStatus,
     pub priority: Option<TaskPriority>,
@@ -169,9 +200,9 @@ pub struct Application {
     pub icon_path: Option<String>,
     pub category: Option<String>,
     pub is_tracked: bool, // Boolean field with default false
-    pub user_id: Option<String>, // Make optional to match database schema
-    pub created_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
-    pub updated_at: Option<chrono::DateTime<chrono::Utc>>, // Make optional to match database default
+    pub user_id: Option<String>, // Optional to match database schema
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>, // Database default now()
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>, // Database default now()
     pub last_used: Option<chrono::DateTime<chrono::Utc>>, // Add missing field from database
 }
 
@@ -187,4 +218,14 @@ pub struct TimeEntry {
     pub is_active: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Workspace {
+    pub id: String, // UUID primary key
+    pub name: String,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_by: Option<String>,
+    pub description: Option<String>,
 }

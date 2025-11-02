@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './TaskPage.css';
 import Sidebar from './Sidebar';
 import { invoke } from '@tauri-apps/api/core';
+import PageSourceBadge from './components/PageSourceBadge';
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -59,7 +60,7 @@ interface TeamMember {
 
 interface TaskPageProps {
   onLogout: () => void;
-  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => void;
 }
 
 function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
@@ -75,6 +76,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [deleteTarget, setDeleteTarget] = useState<{type: 'task', id: string, title: string} | null>(null);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+
+  if (false) {
+    console.log(teams.length, projects.length, teamMembers.length, showAddTaskModal);
+  }
 
   // Load all data from backend
   const loadAllData = async () => {
@@ -383,6 +388,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
 
   return (
     <div className="dashboard-container">
+      <PageSourceBadge source="src/TaskPageNew.tsx" />
       <Sidebar 
         currentPage="tasks" 
         onLogout={onLogout} 

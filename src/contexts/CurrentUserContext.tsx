@@ -3,8 +3,14 @@ import type { ReactNode } from 'react';
 
 export interface CurrentUser {
   id?: string;
-  role?: string | null;
   name?: string | null;
+  email?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  image_url?: string | null;
+  team_id?: string | null;
+  workspace_id?: string | null;
+  membership_role?: string | null;
 }
 
 interface CurrentUserContextType {

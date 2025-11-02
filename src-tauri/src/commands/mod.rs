@@ -1,13 +1,16 @@
 mod ai_assistant;
 
 use crate::database::{
-    Application, Database, Project, Task, Team, TimeEntry, User,
+    Application, Database, Project, Task, Team, TimeEntry, User, WorkspaceMemberRecord,
 };
-use crate::default_user::{get_default_user, get_default_user_id};
+use crate::default_user::get_default_user;
+use reqwest::{StatusCode, Url};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{State, Manager};
 use regex;
 use ai_assistant::*;
+use std::collections::HashMap;
 
 // Re-export AI assistant commands for use in lib.rs
 pub use ai_assistant::get_productivity_insights;
@@ -20,6 +23,303 @@ fn generate_id() -> String {
 // Helper function to get current timestamp
 fn now() -> chrono::DateTime<chrono::Utc> {
     chrono::Utc::now()
+}
+
+const USER_SELECT_WITH_MEMBERS: &str = "id,name,email,created_at,updated_at,image_url,workspace_members(role,workspace_id,user_id,joined_at)";
+const USER_SELECT_WITH_MEMBERS_INNER: &str = "id,name,email,created_at,updated_at,image_url,workspace_members!inner(role,workspace_id,user_id,joined_at)";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct UserWithMemberships {
+    pub id: String,
+    pub name: String,
+    pub email: Option<String>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub image_url: Option<String>,
+    #[serde(default)]
+    pub workspace_members: Vec<WorkspaceMemberRecord>,
+}
+
+fn apply_membership_meta(user: &mut User, memberships: &[WorkspaceMemberRecord]) {
+    if let Some(member) = memberships.first() {
+        user.workspace_id = member.workspace_id.clone();
+        user.team_id = member.workspace_id.clone();
+    } else {
+        user.workspace_id = None;
+        user.team_id = None;
+    }
+}
+
+fn build_users_url(base_url: &str, select: &str, filters: &[(&str, String)]) -> String {
+    let mut url = format!("{}/rest/v1/users?select={}", base_url, select);
+    for (key, value) in filters {
+        url.push('&');
+        url.push_str(key);
+        url.push('=');
+        url.push_str(value);
+    }
+    url
+}
+
+async fn fetch_users_with_memberships(
+    db: &Database,
+    select: &str,
+    filters: &[(&str, String)],
+) -> Result<Vec<User>, String> {
+    let url = build_users_url(&db.base_url, select, filters);
+    let response = db
+        .client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch users: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Failed to fetch users: {}", response.status()));
+    }
+
+    let rows: Vec<UserWithMemberships> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse users: {}", e))?;
+
+    let users = rows
+        .into_iter()
+        .map(|row| {
+            let mut user = User {
+                id: row.id,
+                name: row.name,
+                email: row.email,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                image_url: row.image_url,
+                role: None,
+                workspace_id: None,
+                team_id: None,
+            };
+            apply_membership_meta(&mut user, &row.workspace_members);
+            user
+        })
+        .collect();
+
+    Ok(users)
+}
+
+async fn fetch_user_by_id(db: &Database, user_id: &str) -> Result<Option<User>, String> {
+    let users = fetch_users_with_memberships(
+        db,
+        USER_SELECT_WITH_MEMBERS,
+        &[ ("id", format!("eq.{}", user_id)) ],
+    )
+    .await?;
+    Ok(users.into_iter().next())
+}
+
+async fn fetch_users_by_workspace(
+    db: &Database,
+    workspace_id: &str,
+) -> Result<Vec<User>, String> {
+    fetch_users_with_memberships(
+        db,
+        USER_SELECT_WITH_MEMBERS_INNER,
+        &[ ("workspace_members.workspace_id", format!("eq.{}", workspace_id)) ],
+    )
+    .await
+}
+
+async fn fetch_all_users(db: &Database) -> Result<Vec<User>, String> {
+    fetch_users_with_memberships(db, USER_SELECT_WITH_MEMBERS, &[]).await
+}
+
+async fn fetch_users_without_workspace(db: &Database) -> Result<Vec<User>, String> {
+    fetch_users_with_memberships(
+        db,
+        USER_SELECT_WITH_MEMBERS,
+        &[ ("workspace_members.workspace_id", "is.null".to_string()) ],
+    )
+    .await
+}
+
+async fn fetch_membership_for_user(
+    db: &Database,
+    user_id: &str,
+) -> Result<Option<WorkspaceMemberRecord>, String> {
+    let url = format!(
+        "{}/rest/v1/workspace_members?user_id=eq.{}&select=id,user_id,workspace_id,role,joined_at",
+        db.base_url, user_id
+    );
+
+    let response = db
+        .client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch workspace membership: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Failed to fetch workspace membership: {}",
+            response.status()
+        ));
+    }
+
+    let records: Vec<WorkspaceMemberRecord> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse workspace membership: {}", e))?;
+
+    Ok(records.into_iter().next())
+}
+
+async fn fetch_memberships_for_user(
+    db: &Database,
+    user_id: &str,
+) -> Result<Vec<WorkspaceMemberRecord>, String> {
+    let url = format!(
+        "{}/rest/v1/workspace_members?user_id=eq.{}&select=id,user_id,workspace_id,role,joined_at",
+        db.base_url, user_id
+    );
+
+    let response = db
+        .client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch workspace memberships: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Failed to fetch workspace memberships: {}",
+            response.status()
+        ));
+    }
+
+    let memberships: Vec<WorkspaceMemberRecord> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse workspace memberships: {}", e))?;
+
+    Ok(memberships)
+}
+
+async fn upsert_workspace_membership(
+    db: &Database,
+    user_id: &str,
+    workspace_id: Option<&str>,
+    role: Option<&str>,
+    clear_membership: bool,
+) -> Result<Option<WorkspaceMemberRecord>, String> {
+    if !clear_membership && workspace_id.is_none() && role.is_none() {
+        return fetch_membership_for_user(db, user_id).await;
+    }
+
+    let membership_url = format!(
+        "{}/rest/v1/workspace_members?user_id=eq.{}",
+        db.base_url, user_id
+    );
+
+    let mut update_map = serde_json::Map::new();
+
+    match (workspace_id, clear_membership) {
+        (Some(id), _) => {
+            update_map.insert("workspace_id".to_string(), json!(id));
+        }
+        (None, true) => {
+            update_map.insert("workspace_id".to_string(), serde_json::Value::Null);
+        }
+        (None, false) => {}
+    }
+
+    if let Some(r) = role {
+        update_map.insert("role".to_string(), json!(r));
+    }
+
+    let response = db
+        .client
+        .patch(&membership_url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=representation")
+        .json(&update_map)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to update workspace membership: {}", e))?;
+
+    if response.status().is_success() {
+    let status = response.status();
+    if status != StatusCode::NO_CONTENT {
+            let updated: Vec<WorkspaceMemberRecord> = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse updated membership: {}", e))?;
+            if let Some(record) = updated.into_iter().next() {
+                return Ok(Some(record));
+            }
+        }
+    }
+
+    // If we reach here, either no membership existed or patch returned no content
+    if let Some(id) = workspace_id {
+            let insert_data = json!({
+                "user_id": user_id,
+                "workspace_id": id,
+                "role": role.unwrap_or("member"),
+            });
+
+        let response = db
+            .execute_query("workspace_members", "POST", Some(insert_data))
+            .await
+            .map_err(|e| format!("Failed to create workspace membership: {}", e))?;
+
+    let created: Vec<WorkspaceMemberRecord> = serde_json::from_value(response)
+            .map_err(|e| format!("Failed to parse created membership: {}", e))?;
+
+        Ok(created.into_iter().next())
+    } else if clear_membership {
+        let mut update_map = serde_json::Map::new();
+        update_map.insert("workspace_id".to_string(), serde_json::Value::Null);
+        if let Some(r) = role {
+            update_map.insert("role".to_string(), json!(r));
+        }
+
+        let response = db
+            .client
+            .patch(&membership_url)
+            .header("apikey", &db.api_key)
+            .header("Authorization", format!("Bearer {}", db.api_key))
+            .header("Content-Type", "application/json")
+            .header("Prefer", "return=representation")
+            .json(&update_map)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to clear workspace membership: {}", e))?;
+
+        if response.status().is_success() {
+            if response.status() != StatusCode::NO_CONTENT {
+                let updated: Vec<WorkspaceMemberRecord> = response
+                    .json()
+                    .await
+                    .map_err(|e| format!("Failed to parse cleared membership: {}", e))?;
+                Ok(updated.into_iter().next())
+            } else {
+                Ok(None)
+            }
+        } else {
+            Err(format!(
+                "Failed to clear workspace membership: {}",
+                response.status()
+            ))
+        }
+    } else {
+        Ok(fetch_membership_for_user(db, user_id).await?)
+    }
 }
 
 // ===== USER COMMANDS =====
@@ -39,34 +339,39 @@ pub async fn create_user(
 
     // Debug logging
     println!("Creating user with teamId: {:?}", teamId);
+    let user_id = generate_id();
+    let timestamp = now().to_rfc3339();
 
-    let user_data = json!({
-        "id": generate_id(),
+    let user_payload = json!({
+        "id": &user_id,
         "name": name,
         "email": email,
-        "team_id": teamId,
-        "current_project_id": null,
-        "role": role,
-        "created_at": now().to_rfc3339(),
-        "updated_at": now().to_rfc3339()
+        "created_at": &timestamp,
+        "updated_at": &timestamp,
+        "image_url": null
     });
 
-    println!("User data being sent to database: {}", user_data);
+    println!("User data being sent to database: {}", user_payload);
 
-    let response = db
-        .execute_query("users", "POST", Some(user_data))
+    db.execute_query("users", "POST", Some(user_payload))
         .await
         .map_err(|e| format!("Failed to create user: {}", e))?;
 
-    // The response should be an array with the created record
-    let created_users: Vec<User> = serde_json::from_value(response)
-        .map_err(|e| format!("Failed to parse created user: {}", e))?;
-    
-    if let Some(created_user) = created_users.into_iter().next() {
-        Ok(created_user)
-    } else {
-        Err("No user was created".to_string())
+    let trimmed_team = teamId.trim();
+    if !trimmed_team.is_empty() && !trimmed_team.eq_ignore_ascii_case("unassigned") {
+        upsert_workspace_membership(
+            &db,
+            &user_id,
+            Some(trimmed_team),
+            Some(role.as_str()),
+            false,
+        )
+        .await?;
     }
+
+    fetch_user_by_id(&db, &user_id)
+        .await?
+        .ok_or_else(|| "User was created but could not be retrieved".to_string())
 }
 
 #[tauri::command]
@@ -96,21 +401,7 @@ pub async fn delete_user(db: State<'_, Database>, userId: String) -> Result<(), 
 
 #[tauri::command]
 pub async fn get_user(db: State<'_, Database>, user_id: String) -> Result<Option<User>, String> {
-    let url = format!("{}/rest/v1/users?id=eq.{}", db.base_url, user_id);
-    let response = db.client
-        .get(&url)
-        .header("apikey", &db.api_key)
-        .header("Authorization", format!("Bearer {}", db.api_key))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch user: {}", e))?;
-
-    if !response.status().is_success() {
-        return Ok(None);
-    }
-
-    let users: Vec<User> = response.json().await.map_err(|e| format!("Failed to parse user: {}", e))?;
-    Ok(users.into_iter().next())
+    fetch_user_by_id(&db, &user_id).await
 }
 
 #[tauri::command]
@@ -118,35 +409,24 @@ pub async fn get_users_by_team(
     db: State<'_, Database>,
     teamId: Option<String>,
 ) -> Result<Vec<User>, String> {
-    let url = match teamId {
-        Some(tid) => format!("{}/rest/v1/users?team_id=eq.{}", db.base_url, tid),
-        None => format!("{}/rest/v1/users?team_id=is.null", db.base_url),
-    };
-    let response = db.client
-        .get(&url)
-        .header("apikey", &db.api_key)
-        .header("Authorization", format!("Bearer {}", db.api_key))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch users: {}", e))?;
-
-    let users: Vec<User> = response.json().await.map_err(|e| format!("Failed to parse users: {}", e))?;
-    Ok(users)
+    match teamId {
+        Some(tid) => {
+            let trimmed = tid.trim();
+            if trimmed.is_empty() {
+                Ok(vec![])
+            } else if trimmed.eq_ignore_ascii_case("unassigned") {
+                fetch_users_without_workspace(&db).await
+            } else {
+                fetch_users_by_workspace(&db, trimmed).await
+            }
+        }
+        None => fetch_users_without_workspace(&db).await,
+    }
 }
 
 #[tauri::command]
 pub async fn get_all_users(db: State<'_, Database>) -> Result<Vec<User>, String> {
-    let url = format!("{}/rest/v1/users", db.base_url);
-    let response = db.client
-        .get(&url)
-        .header("apikey", &db.api_key)
-        .header("Authorization", format!("Bearer {}", db.api_key))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch users: {}", e))?;
-
-    let users: Vec<User> = response.json().await.map_err(|e| format!("Failed to parse users: {}", e))?;
-    Ok(users)
+    fetch_all_users(&db).await
 }
 
 #[tauri::command]
@@ -155,50 +435,63 @@ pub async fn update_user(
     user_id: String,
     name: Option<String>,
     email: Option<String>,
-    teamId: Option<String>,
-    current_project_id: Option<String>,
+    team_id: Option<String>,
     role: Option<String>,
+    image_url: Option<String>,
 ) -> Result<User, String> {
-    let mut update_data = json!({
-        "updated_at": now().to_rfc3339()
-    });
+    let mut update_map = serde_json::Map::new();
 
+    if name.is_some() || email.is_some() || image_url.is_some() {
+        update_map.insert("updated_at".to_string(), json!(now().to_rfc3339()));
+    }
     if let Some(name) = name {
-        update_data["name"] = json!(name);
+        update_map.insert("name".to_string(), json!(name));
     }
     if let Some(email) = email {
-        update_data["email"] = json!(email);
+        update_map.insert("email".to_string(), json!(email));
     }
-    if let Some(teamId) = teamId {
-        update_data["teamId"] = json!(teamId);
-    }
-    if let Some(current_project_id) = current_project_id {
-        update_data["current_project_id"] = json!(current_project_id);
-    }
-    if let Some(role) = role {
-        update_data["role"] = json!(role);
+    if let Some(image_url) = image_url {
+        update_map.insert("image_url".to_string(), json!(image_url));
     }
 
-    let url = format!("{}/rest/v1/users?id=eq.{}", db.base_url, user_id);
-    let response = db.client
-        .patch(&url)
-        .header("apikey", &db.api_key)
-        .header("Authorization", format!("Bearer {}", db.api_key))
-        .header("Content-Type", "application/json")
-        .header("Prefer", "return=representation")
-        .json(&update_data)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to update user: {}", e))?;
-
-    // The response should be an array with the updated record
-    let updated_users: Vec<User> = response.json().await.map_err(|e| format!("Failed to parse updated user: {}", e))?;
-    
-    if let Some(updated_user) = updated_users.into_iter().next() {
-        Ok(updated_user)
-    } else {
-        Err("No user was updated".to_string())
+    if !update_map.is_empty() {
+        let url = format!("{}/rest/v1/users?id=eq.{}", db.base_url, user_id);
+        db.client
+            .patch(&url)
+            .header("apikey", &db.api_key)
+            .header("Authorization", format!("Bearer {}", db.api_key))
+            .header("Content-Type", "application/json")
+            .header("Prefer", "return=representation")
+            .json(&update_map)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to update user: {}", e))?;
     }
+
+    let mut workspace_assignment: Option<String> = None;
+    let mut clear_membership = false;
+
+    if let Some(team) = team_id {
+        let trimmed = team.trim().to_string();
+        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("unassigned") {
+            clear_membership = true;
+        } else {
+            workspace_assignment = Some(trimmed);
+        }
+    }
+
+    upsert_workspace_membership(
+        &db,
+        &user_id,
+        workspace_assignment.as_deref(),
+        role.as_deref(),
+        clear_membership,
+    )
+    .await?;
+
+    fetch_user_by_id(&db, &user_id)
+        .await?
+        .ok_or_else(|| "User was updated but could not be retrieved".to_string())
 }
 
 // ===== TEAM COMMANDS =====
@@ -210,13 +503,13 @@ pub async fn create_team(
 ) -> Result<Team, String> {
     let team_data = json!({
         "id": generate_id(),
-        "team_name": team_name,
+        "name": team_name,
         "created_at": now().to_rfc3339(),
         "updated_at": now().to_rfc3339()
     });
 
     let response = db
-        .execute_query("teams", "POST", Some(team_data))
+        .execute_query("workspaces", "POST", Some(team_data))
         .await
         .map_err(|e| format!("Failed to create team: {}", e))?;
 
@@ -233,7 +526,7 @@ pub async fn create_team(
 
 #[tauri::command]
 pub async fn get_team(db: State<'_, Database>, teamId: String) -> Result<Option<Team>, String> {
-    let url = format!("{}/rest/v1/teams?id=eq.{}", db.base_url, teamId);
+    let url = format!("{}/rest/v1/workspaces?id=eq.{}", db.base_url, teamId);
     let response = db.client
         .get(&url)
         .header("apikey", &db.api_key)
@@ -252,7 +545,7 @@ pub async fn get_team(db: State<'_, Database>, teamId: String) -> Result<Option<
 
 #[tauri::command]
 pub async fn get_all_teams(db: State<'_, Database>) -> Result<Vec<Team>, String> {
-    let url = format!("{}/rest/v1/teams", db.base_url);
+    let url = format!("{}/rest/v1/workspaces", db.base_url);
     let response = db.client
         .get(&url)
         .header("apikey", &db.api_key)
@@ -266,10 +559,110 @@ pub async fn get_all_teams(db: State<'_, Database>) -> Result<Vec<Team>, String>
 }
 
 #[tauri::command]
+pub async fn get_my_workspaces(db: State<'_, Database>) -> Result<Vec<Team>, String> {
+    let user_id = crate::current_user::get_current_user_id();
+
+    let memberships = fetch_memberships_for_user(&db, &user_id).await?;
+    let mut workspace_ids: Vec<String> = memberships
+        .iter()
+        .filter_map(|record| record.workspace_id.clone())
+        .collect();
+    workspace_ids.sort();
+    workspace_ids.dedup();
+
+    let mut workspaces_map: HashMap<String, Team> = HashMap::new();
+
+    if !workspace_ids.is_empty() {
+        let mut url = Url::parse(&format!("{}/rest/v1/workspaces", db.base_url))
+            .map_err(|e| format!("Invalid base URL: {}", e))?;
+        url.query_pairs_mut()
+            .append_pair("id", &format!("in.({})", workspace_ids.join(",")));
+
+        let response = db
+            .client
+            .get(url)
+            .header("apikey", &db.api_key)
+            .header("Authorization", format!("Bearer {}", db.api_key))
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch user workspaces: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "Failed to fetch user workspaces: {}",
+                response.status()
+            ));
+        }
+
+        let mut membership_workspaces: Vec<Team> = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse user workspaces: {}", e))?;
+
+        for workspace in membership_workspaces.drain(..) {
+            workspaces_map.insert(workspace.id.clone(), workspace);
+        }
+    }
+
+    let mut created_url = Url::parse(&format!("{}/rest/v1/workspaces", db.base_url))
+        .map_err(|e| format!("Invalid base URL: {}", e))?;
+    created_url
+        .query_pairs_mut()
+        .append_pair("created_by", &format!("eq.{}", user_id));
+
+    let created_response = db
+        .client
+        .get(created_url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch owned workspaces: {}", e))?;
+
+    if created_response.status().is_success() {
+        let created_workspaces: Vec<Team> = created_response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse owned workspaces: {}", e))?;
+
+        for workspace in created_workspaces {
+            workspaces_map.insert(workspace.id.clone(), workspace);
+        }
+    }
+
+    let mut result: Vec<Team> = workspaces_map.into_values().collect();
+    result.sort_by(|a, b| a.team_name.cmp(&b.team_name));
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn get_all_workspace_members(db: State<'_, Database>) -> Result<Vec<WorkspaceMemberRecord>, String> {
+    let url = format!(
+        "{}/rest/v1/workspace_members?select=id,user_id,workspace_id,role,joined_at",
+        db.base_url
+    );
+
+    let response = db
+        .client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch workspace members: {}", e))?;
+
+    let members: Vec<WorkspaceMemberRecord> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse workspace members: {}", e))?;
+
+    Ok(members)
+}
+
+#[tauri::command]
 pub async fn delete_team(db: State<'_, Database>, teamId: String) -> Result<(), String> {
     println!("Delete team command called with teamId: {}", teamId);
-    
-    let url = format!("{}/rest/v1/teams?id=eq.{}", db.base_url, teamId);
+    let url = format!("{}/rest/v1/workspaces?id=eq.{}", db.base_url, teamId);
     println!("Delete team URL: {}", url);
     
     let response = db.client
@@ -303,7 +696,7 @@ pub async fn create_project(
     let project_data = json!({
         "id": generate_id(),
         "name": name,
-        "team_id": teamId,
+        "workspace_id": teamId,
         "manager_id": manager_id,
         "description": description,
         "created_at": now().to_rfc3339(),
@@ -331,7 +724,7 @@ pub async fn get_projects_by_team(
     db: State<'_, Database>,
     teamId: String,
 ) -> Result<Vec<Project>, String> {
-    let url = format!("{}/rest/v1/projects?team_id=eq.{}", db.base_url, teamId);
+    let url = format!("{}/rest/v1/projects?workspace_id=eq.{}", db.base_url, teamId);
     let response = db.client
         .get(&url)
         .header("apikey", &db.api_key)
@@ -1078,9 +1471,6 @@ pub async fn sign_up_user(
             "id": user_id,
             "name": chosen_name,
             "email": email,
-            "team_id": null,
-            "current_project_id": null,
-            "role": "member",
             "created_at": now().to_rfc3339(),
             "updated_at": now().to_rfc3339(),
             "image_url": null

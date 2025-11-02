@@ -115,7 +115,7 @@ interface ChatMessage {
 
 interface AIAssistantPageProps {
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
+  onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => void;
 }
 
 // Mock team data - will be replaced with real backend data
@@ -139,7 +139,6 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
   const [currentUser] = useState({
     id: 'user-1',
     name: 'John Manager',
-    role: 'manager', // 'manager' or 'member'
     teamId: 'team-1'
   });
 
@@ -550,7 +549,7 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
 
     let dotCount = 0;
     let isActive = true;
-    let currentTimer: NodeJS.Timeout | null = null;
+  let currentTimer: ReturnType<typeof setTimeout> | null = null;
     
     const updateDots = () => {
       if (!thinkingDotsRef.current || !isActive) return;
@@ -1138,16 +1137,16 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
     }
   };
 
-  // Check if user is a manager - only managers can access AI assistant
-  const isManager = currentUser.role === 'manager';
+  // Require the user to belong to a workspace before enabling the assistant
+  const hasWorkspaceAccess = Boolean(currentUser?.teamId);
 
-  if (!isManager) {
+  if (!hasWorkspaceAccess) {
     return (
       <div className="ai-assistant-container">
         <Sidebar
           currentPage="ai-assistant"
           onLogout={onLogout}
-          onPageChange={onPageChange}
+          onPageChange={onPageChange || (() => {})}
         />
 
         <div className="main-content">
@@ -1155,8 +1154,8 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
             <div className="access-denied-container">
               <div className="access-denied-content">
                 <h1>Access Restricted</h1>
-                <p>The AI Assistant is only available to team managers.</p>
-                <p>Contact your team manager to request access.</p>
+                <p>The AI Assistant is available once you&apos;re assigned to a workspace.</p>
+                <p>Please contact an administrator if you need access.</p>
               </div>
             </div>
           </div>
@@ -1170,7 +1169,7 @@ const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ onLogout, onPageChang
       <Sidebar 
         currentPage="ai-assistant" 
         onLogout={onLogout} 
-        onPageChange={onPageChange} 
+        onPageChange={onPageChange || (() => {})} 
       />
       
       <div className="main-content">

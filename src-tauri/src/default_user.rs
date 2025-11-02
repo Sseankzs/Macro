@@ -7,13 +7,12 @@ pub fn get_default_user() -> User {
         id: "fdbc0903-26e4-4271-8a57-34217bd2cd45".to_string(), // Fixed UUID for consistency
         name: "Dev User".to_string(),
         email: Some("dev@example.com".to_string()),
-        team_id: None,
-        current_project_id: None,
-        // Default to Owner in dev, but optional
-        role: Some(crate::database::UserRole::Owner),
         created_at: Some(Utc::now()),
         updated_at: Some(Utc::now()),
         image_url: None,
+        role: None,
+        workspace_id: None,
+        team_id: None,
     }
 }
 

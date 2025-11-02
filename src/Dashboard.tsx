@@ -8,6 +8,7 @@ import { useDashboardCache } from './contexts/DashboardCacheContext';
 import { DashboardSkeletonGrid } from './components/LoadingComponents';
 import MonthlyCalendar from './MonthlyCalendar';
 import { BYPASS_DB_APPS } from './config';
+import PageSourceBadge from './components/PageSourceBadge';
 
 // Check if we're running in Tauri environment
 const isTauri = () => {
@@ -60,7 +61,7 @@ interface AppTimeData {
 
 interface DashboardProps {
   onLogout: () => void;
-  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
+  onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => void;
 }
 
 function Dashboard({ onLogout, onPageChange }: DashboardProps) {
@@ -950,6 +951,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
 
   return (
     <div className="dashboard-container">
+      <PageSourceBadge source="src/Dashboard.tsx" />
       <Sidebar 
         currentPage="dashboard" 
         onLogout={onLogout} 
