@@ -4,6 +4,8 @@ import './Dashboard.css';
 import Sidebar from './Sidebar';
 import { ResponsiveBar } from '@nivo/bar';
 import { ResponsivePie } from '@nivo/pie';
+import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
+import 'react-circular-progressbar/dist/styles.css';
 import { useDashboardCache } from './contexts/DashboardCacheContext';
 import { DashboardSkeletonGrid } from './components/LoadingComponents';
 import MonthlyCalendar from './MonthlyCalendar';
@@ -64,64 +66,225 @@ interface DashboardProps {
   onPageChange: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant' | 'debug') => void;
 }
 
+interface BackendTask {
+  id: string;
+  title: string;
+  description?: string;
+  project_id?: string;
+  assignee_id?: string;
+  status: 'todo' | 'in_progress' | 'done';
+  priority?: 'low' | 'medium' | 'high';
+  due_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   const { cache, updateCache } = useDashboardCache();
   
   const [user, setUser] = useState<{ name: string } | null>(null);
-  const [selectedTimePeriod, setSelectedTimePeriod] = useState<'today' | 'week' | 'month'>('week');
+  const [tasks, setTasks] = useState<BackendTask[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  
+  // State for stats cards
   const [currentActivity, setCurrentActivity] = useState<CurrentActivity | null>(null);
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [hoursTrackedToday, setHoursTrackedToday] = useState<number>(0);
   const [hoursTrackedYesterday, setHoursTrackedYesterday] = useState<number>(0);
   const [hoursTrackedThisWeek, setHoursTrackedThisWeek] = useState<number>(0);
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [applicationTimeData, setApplicationTimeData] = useState<AppTimeData[]>([]);
   const [mostUsedApp, setMostUsedApp] = useState<AppTimeData | null>(null);
+  const [applications, setApplications] = useState<Application[]>([]);
+  
+  // State for charts
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState<'today' | 'week' | 'month'>('week');
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [categoryData, setCategoryData] = useState<Array<{id: string, label: string, value: number, hours: number}>>([]);
   const [dailyTimeData, setDailyTimeData] = useState<Array<{[key: string]: number | string}>>([]);
   const [chartCategories, setChartCategories] = useState<string[]>([]);
-  
-  // Main dashboard loading state
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // OS detection for debugging
-  const [detectedOS, setDetectedOS] = useState<string>('Unknown');
+  const [applicationTimeData, setApplicationTimeData] = useState<AppTimeData[]>([]);
 
-  // Time filter hotkeys - only work when on dashboard
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Only trigger when not holding Ctrl/Cmd (to avoid conflicts with navigation shortcuts)
-      if (event.ctrlKey || event.metaKey) return;
-      
-      // Only trigger for number keys 1, 2, 3
-      switch (event.key) {
-        case '1':
-          event.preventDefault();
-          handleTimePeriodChange('today');
-          break;
-        case '2':
-          event.preventDefault();
-          handleTimePeriodChange('week');
-          break;
-        case '3':
-          event.preventDefault();
-          handleTimePeriodChange('month');
-          break;
-        default:
-          return;
+  // Commented out time filter hotkeys
+  // useEffect(() => {
+  //   const handleKeyDown = (event: KeyboardEvent) => {
+  //     if (event.ctrlKey || event.metaKey) return;
+  //     switch (event.key) {
+  //       case '1':
+  //         event.preventDefault();
+  //         handleTimePeriodChange('today');
+  //         break;
+  //       case '2':
+  //         event.preventDefault();
+  //         handleTimePeriodChange('week');
+  //         break;
+  //       case '3':
+  //         event.preventDefault();
+  //         handleTimePeriodChange('month');
+  //         break;
+  //       default:
+  //         return;
+  //     }
+  //   };
+  //   document.addEventListener('keydown', handleKeyDown);
+  //   return () => {
+  //     document.removeEventListener('keydown', handleKeyDown);
+  //   };
+  // }, [selectedTimePeriod]);
+
+
+  // Helper function to get time of day greeting
+  const getTimeOfDay = (): string => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'evening';
+  };
+
+  // Helper function to format date and time
+  const formatDateTime = (dateString: string): string => {
+    const date = new Date(dateString);
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${dateStr} at ${timeStr}`;
+  };
+
+  // Load user, tasks, and stats data
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      if (isTauri()) {
+        const [userData, backendTasks, timeEntries] = await Promise.all([
+          invoke('get_current_user') as Promise<{ name: string }>,
+          invoke('get_my_tasks') as Promise<BackendTask[]>,
+          invoke('get_my_time_entries', { limit: 1000 }) as Promise<TimeEntry[]>
+        ]);
+        setUser(userData);
+        setTasks(backendTasks);
+
+        // Load applications
+        let appsForCalc: Application[] = [];
+        if (BYPASS_DB_APPS) {
+          type DetectedProcess = { name: string; process_name: string };
+          const detected = await invoke<DetectedProcess[]>('get_running_processes');
+          appsForCalc = detected.map((p, idx) => ({
+            id: `detected-${idx}`,
+            name: p.name || p.process_name,
+            process_name: p.process_name,
+            category: undefined,
+            icon_path: undefined,
+            is_tracked: true,
+            user_id: 'local',
+            created_at: undefined,
+            updated_at: undefined,
+            last_used: undefined,
+          }));
+        } else {
+          appsForCalc = await invoke('get_my_applications') as Application[];
+        }
+        setApplications(appsForCalc);
+
+        // Calculate hours tracked
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const todayHours = calculateHoursForDate(timeEntries, today);
+        const yesterdayHours = calculateHoursForDate(timeEntries, yesterday);
+
+        // Calculate hours for this week
+        const weekStart = new Date(today);
+        const dayOfWeek = today.getDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        weekStart.setDate(today.getDate() - daysToMonday);
+        weekStart.setHours(0, 0, 0, 0);
+
+        let weekHours = 0;
+        for (let i = 0; i < 7; i++) {
+          const weekDay = new Date(weekStart);
+          weekDay.setDate(weekStart.getDate() + i);
+          weekHours += calculateHoursForDate(timeEntries, weekDay);
+        }
+
+        setHoursTrackedToday(todayHours);
+        setHoursTrackedYesterday(yesterdayHours);
+        setHoursTrackedThisWeek(weekHours);
+
+        // Find most used app
+        const mostUsedAppData = findMostUsedApp(timeEntries, appsForCalc);
+        setMostUsedApp(mostUsedAppData);
+
+        // Fetch current activity
+        await fetchCurrentActivity();
+      } else {
+        // Browser mode
+        setUser({ name: 'Dev User' });
+        setTasks([]);
       }
-    };
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    // Add event listener
-    document.addEventListener('keydown', handleKeyDown);
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    // Update current activity duration every second
+    const durationInterval = setInterval(() => {
+      updateCurrentActivityDuration();
+    }, 1000);
     
-    // Cleanup
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [selectedTimePeriod]);
+    // Fetch current activity every 10 seconds
+    const activityInterval = setInterval(() => {
+      fetchCurrentActivity();
+    }, 10000);
 
+    return () => {
+      clearInterval(durationInterval);
+      clearInterval(activityInterval);
+    };
+  }, [currentActivity]);
+
+  // Calculate task statistics
+  const getTaskStats = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const todayTasks = tasks.filter(task => {
+      if (!task.due_date) return false;
+      const dueDate = new Date(task.due_date);
+      dueDate.setHours(0, 0, 0, 0);
+      return dueDate.getTime() === today.getTime();
+    });
+
+    const highPriorityTasks = todayTasks.filter(task => task.priority === 'high');
+    
+    // Find closest deadline (including future dates)
+    const tasksWithDeadlines = tasks
+      .filter(task => task.due_date)
+      .map(task => ({
+        ...task,
+        dueDate: new Date(task.due_date!)
+      }))
+      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+
+    const closestDeadline = tasksWithDeadlines.length > 0 ? tasksWithDeadlines[0] : null;
+
+    return {
+      todayCount: todayTasks.length,
+      highPriorityCount: highPriorityTasks.length,
+      closestDeadline: closestDeadline ? formatDateTime(closestDeadline.due_date!) : null
+    };
+  };
 
   // Function to find the most used app for the past week
   const findMostUsedApp = (timeEntries: TimeEntry[], apps: Application[]): AppTimeData | null => {
@@ -721,7 +884,8 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     }
   };
 
-
+  // Commented out old loadAllData function
+  /*
   // Load all dashboard data from backend
   const loadAllData = async () => {
     try {
@@ -870,6 +1034,8 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     }
   };
 
+  // Commented out old useEffects
+  /*
   useEffect(() => {
     loadAllData();
   }, []);
@@ -943,11 +1109,21 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       setChartCategories([]);
     }
   }, [selectedTimePeriod, applications, cache.timeEntries, loading]);
+  */
 
-  const handleTimePeriodChange = (period: 'today' | 'week' | 'month') => {
-    console.log('🔄 Time period changing from', selectedTimePeriod, 'to', period);
-    setSelectedTimePeriod(period);
-  };
+  // Commented out old handler
+  // const handleTimePeriodChange = (period: 'today' | 'week' | 'month') => {
+  //   console.log('🔄 Time period changing from', selectedTimePeriod, 'to', period);
+  //   setSelectedTimePeriod(period);
+  // };
+
+  const taskStats = getTaskStats();
+  const now = new Date();
+  const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'short' });
+  const month = now.toLocaleDateString('en-US', { month: 'long' });
+  const day = now.getDate().toString().padStart(2, '0');
+  const year = now.toLocaleDateString('en-US', { year: 'numeric' });
+  const timeOfDay = getTimeOfDay();
 
   return (
     <div className="dashboard-container">
@@ -960,12 +1136,370 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       
       <div className="main-content">
         {loading ? (
-          <DashboardSkeletonGrid />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <div>Loading...</div>
+          </div>
         ) : (
           <div className="dashboard-page-container">
+            {/* Top Section - Overview and Stats */}
+            <div className="dashboard-top-section">
+              {/* Bento Box - Square box on the left */}
+              <div className="bento-box-square">
+                <div className="bento-box-content">
+                  <div className="bento-date-header">
+                    <div className="bento-day-of-week">{dayOfWeek}</div>
+                    <div className="bento-date-container">
+                      <div className="bento-month-date">
+                        <span className="bento-month">{month}</span>
+                        <span className="bento-day">{day}</span>
+                      </div>
+                      <div className="bento-year">{year}</div>
+                    </div>
+                  </div>
+                  <div className="bento-greeting">
+                    <span className="greeting-static">Good </span>
+                    <span className="greeting-dynamic">{timeOfDay}</span>
+                    <span className="greeting-static">, </span>
+                    <span className="greeting-dynamic">{user?.name || 'User'}</span>
+                    <span className="greeting-static">. You have </span>
+                    <span className="greeting-dynamic">{taskStats.todayCount}</span>
+                    <span className="greeting-dynamic"> {taskStats.todayCount === 1 ? 'task' : 'tasks'}</span>
+                    <span className="greeting-static"> today, </span>
+                    <span className="greeting-static">of them </span>
+                    <span className="greeting-dynamic">{taskStats.highPriorityCount}</span>
+                    <span className="greeting-dynamic"> high priority</span>
+                    <span className="greeting-static">. </span>
+                    {taskStats.closestDeadline ? (
+                      <>
+                        <span className="greeting-static">Your closest deadline is </span>
+                        <span className="greeting-dynamic">{taskStats.closestDeadline}</span>
+                        <span className="greeting-static">.</span>
+                      </>
+                    ) : (
+                      <span className="greeting-static">No upcoming deadlines.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats Cards - Right side */}
+              <div className="stats-cards-container">
+                <div className="stats-grid">
+                  {/* Current Activity Card */}
+                  <div className="stat-card ios-card current-activity-card">
+                    <div className="stat-header">
+                      <h3>Current Activity</h3>
+                      <span className="stat-period">
+                        {currentActivity ? '' : 'idle'}
+                      </span>
+                    </div>
+                    <div className="stat-main">
+                      {currentActivity ? (
+                        <div className="app-name">{currentActivity?.app_name || ''}</div>
+                      ) : (
+                        <div className="no-activity">
+                          <span className="no-activity-text">No tracked apps running</span>
+                          <span className="no-activity-subtitle">Enable tracking for apps in Register Apps</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="stat-subtitle">
+                      {currentActivity ? (
+                        <div className="activity-info-horizontal">
+                          <div className="app-time">
+                            {formatDurationWithFullWords(currentActivity?.duration_hours || 0, (currentActivity?.duration_minutes || 0) % 60)}
+                          </div>
+                          <div className="apps-count">
+                            {(currentActivity?.active_apps_count || 0) > 1 
+                              ? `${currentActivity?.active_apps_count || 0} apps`
+                              : ''
+                            }
+                          </div>
+                        </div>
+                      ) : (
+                        'Enable app tracking'
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Tasks Left Card */}
+                  <div className="stat-card ios-card tasks-left-card">
+                    <div className="stat-header">
+                      <h3>Tasks Left</h3>
+                      <span className="stat-period"></span>
+                    </div>
+                    <div className="stat-main">
+                      <div className="circular-progress-container">
+                        <CircularProgressbar
+                          value={0}
+                          strokeWidth={10}
+                          styles={buildStyles({
+                            pathColor: '#6c757d',
+                            trailColor: '#E5E5E7',
+                            pathTransitionDuration: 0.5,
+                            strokeLinecap: 'round',
+                          })}
+                        />
+                        <div className="progress-text">
+                          <span className="progress-number">0</span>
+                          <span className="progress-label">tasks</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="stat-subtitle">
+                    </div>
+                  </div>
+                  
+                  {/* Tracked Today Card */}
+                  <div className="stat-card ios-card tracked-today-card">
+                    <div className="stat-header">
+                      <h3>Tracked Today</h3>
+                      <span className="stat-period">vs yesterday</span>
+                    </div>
+                    <div className="stat-main">
+                      <>
+                        <span className="stat-number stat-number-small">
+                          {formatTimeWithShortUnits(hoursTrackedToday)}
+                        </span>
+                        <span className={`stat-change ${hoursTrackedToday >= hoursTrackedYesterday ? 'positive' : 'negative'}`}>
+                          {hoursTrackedToday >= hoursTrackedYesterday ? '+' : ''}{(hoursTrackedToday - hoursTrackedYesterday).toFixed(1)} hours
+                        </span>
+                      </>
+                    </div>
+                    <div className="stat-subtitle">
+                      This week: {hoursTrackedThisWeek.toFixed(1)} hours
+                    </div>
+                  </div>
+
+                  {/* Top Applications Card */}
+                  <div className="top-apps-card">
+                    <div className="bento-box-content">
+                      <div className="stat-header" style={{ marginBottom: '16px' }}>
+                        <h3 style={{ fontSize: 'var(--font-xl)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>Top Applications</h3>
+                        <span className="stat-period">{selectedTimePeriod}</span>
+                      </div>
+                      <div className="top-apps-table" key={`table-${selectedTimePeriod}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                        <div className="table-header-row">
+                          <span className="table-header-cell app-name-header">Application</span>
+                          <span className="table-header-cell time-header">Time</span>
+                        </div>
+                        <div className="table-body">
+                          {loading ? (
+                            <div className="table-empty-state">
+                              <span className="empty-text">Loading applications...</span>
+                            </div>
+                          ) : applicationTimeData.length === 0 ? (
+                            <div className="table-empty-state">
+                              <span className="empty-text">No tracked applications</span>
+                            </div>
+                          ) : (
+                            applicationTimeData.map((item, index) => (
+                              <div key={`${selectedTimePeriod}-${index}-${item.application}`} className="table-data-row">
+                                <div className="table-data-cell app-name-cell">
+                                  <div className="app-icon-small">💻</div>
+                                  <span className="app-name">{item.application}</span>
+                                </div>
+                                <span className="table-data-cell time-cell">{item.time}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Charts Section - Below both */}
+            <div className="charts-section">
+              <div className="charts-header">
+                <h2 className="section-title">Time Distribution</h2>
+                <div className="chart-controls">
+                  <button 
+                    className={`chart-btn ${selectedTimePeriod === 'today' ? 'active' : ''}`}
+                    onClick={() => setSelectedTimePeriod('today')}
+                    title="Press 1 for Today"
+                  >
+                    Today <span className="hotkey">1</span>
+                  </button>
+                  <button 
+                    className={`chart-btn ${selectedTimePeriod === 'week' ? 'active' : ''}`}
+                    onClick={() => setSelectedTimePeriod('week')}
+                    title="Press 2 for Week"
+                  >
+                    Week <span className="hotkey">2</span>
+                  </button>
+                  <button 
+                    className={`chart-btn ${selectedTimePeriod === 'month' ? 'active' : ''}`}
+                    onClick={() => setSelectedTimePeriod('month')}
+                    title="Press 3 for Month"
+                  >
+                    Month <span className="hotkey">3</span>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Charts Grid - Two column layout */}
+              <div className="charts-grid">
+                {/* Left Column - Charts */}
+                <div className="charts-left-column">
+                  
+                  {/* Monthly Calendar - Show for Month view only */}
+                  {selectedTimePeriod === 'month' && (
+                    <div className="chart-card ios-card">
+                      <div className="chart-header">
+                        <h3>Monthly Activity Calendar</h3>
+                      </div>
+                      <MonthlyCalendar 
+                        timeEntries={cache.timeEntries || []}
+                        applications={applications}
+                        maxHoursPerDay={12}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Daily Time Distribution Chart - Show for Week view only */}
+                  {selectedTimePeriod === 'week' && (
+                    <div className="chart-card ios-card">
+                      <div className="chart-header">
+                        <h3>Daily Distribution</h3>
+                        <span className="chart-period">{selectedTimePeriod}</span>
+                      </div>
+                      {loading ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">Loading daily data...</span>
+                        </div>
+                      ) : dailyTimeData.length === 0 || chartCategories.length === 0 ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">No daily data</span>
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                            Track some applications to see daily breakdown
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="nivo-container">
+                          <ResponsiveBar
+                            key={`bar-${windowWidth}-${selectedTimePeriod}`}
+                            data={dailyTimeData}
+                            keys={chartCategories.length > 0 ? chartCategories : ['uncategorized']}
+                            indexBy="day"
+                            margin={windowWidth > 768 ? 
+                              { top: 20, right: 20, bottom: 40, left: 60 } : 
+                              { top: 20, right: 10, bottom: 30, left: 50 }
+                            }
+                            padding={windowWidth > 768 ? 0.2 : 0.1}
+                            colors={['#5DADE2', '#48C9B0', '#52BE80', '#F4D03F', '#EB984E']}
+                            borderColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
+                            axisTop={null}
+                            axisRight={null}
+                            axisBottom={{
+                              tickSize: windowWidth > 768 ? 5 : 3,
+                              tickPadding: windowWidth > 768 ? 5 : 3,
+                              tickRotation: windowWidth > 768 ? 0 : -45,
+                              legend: 'Day',
+                              legendPosition: 'middle',
+                              legendOffset: windowWidth > 768 ? 32 : 25,
+                            }}
+                            axisLeft={{
+                              tickSize: windowWidth > 768 ? 5 : 3,
+                              tickPadding: windowWidth > 768 ? 5 : 3,
+                              tickRotation: 0,
+                              legend: 'Hours',
+                              legendPosition: 'middle',
+                              legendOffset: windowWidth > 768 ? -50 : -40,
+                            }}
+                            labelSkipWidth={windowWidth > 768 ? 12 : 8}
+                            labelSkipHeight={windowWidth > 768 ? 12 : 8}
+                            labelTextColor={{ from: 'color', modifiers: [['darker', 1.6]] }}
+                            animate={false}
+                            enableLabel={false}
+                            enableGridX={false}
+                            enableGridY={true}
+                            tooltip={({ id, value, indexValue }) => (
+                              <div style={{
+                                background: 'rgba(0, 0, 0, 0.8)',
+                                color: 'white',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                border: 'none'
+                              }}>
+                                <strong>{indexValue}</strong><br />
+                                {String(id).replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: {value}h
+                              </div>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* App Category Breakdown Chart - Show for Today view only */}
+                  {selectedTimePeriod === 'today' && (
+                    <div className="chart-card ios-card">
+                      <div className="chart-header">
+                        <h3>App Category Breakdown</h3>
+                        <span className="chart-period">{selectedTimePeriod}</span>
+                      </div>
+                      {loading ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">Loading categories...</span>
+                        </div>
+                      ) : categoryData.length === 0 ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">No category data</span>
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                            Track some applications to see category breakdown
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="nivo-pie-container">
+                          <ResponsivePie
+                            key={`pie-${windowWidth}-${selectedTimePeriod}`}
+                            data={categoryData}
+                            margin={windowWidth > 768 ? 
+                              { top: 20, right: 120, bottom: 20, left: 20 } : 
+                              { top: 20, right: 20, bottom: 20, left: 20 }
+                            }
+                            innerRadius={windowWidth > 768 ? 0 : 0}
+                            padAngle={windowWidth > 768 ? 0.7 : 0.5}
+                            cornerRadius={windowWidth > 768 ? 3 : 2}
+                            colors={['#5DADE2', '#48C9B0', '#52BE80', '#F4D03F', '#EB984E']}
+                            borderWidth={1}
+                            borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
+                            arcLabelsSkipAngle={10}
+                            arcLabelsTextColor="#333333"
+                            animate={true}
+                            enableArcLabels={false}
+                            tooltip={({ datum }) => (
+                              <div style={{
+                                background: 'rgba(0, 0, 0, 0.8)',
+                                color: 'white',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                border: 'none'
+                              }}>
+                                <strong>{datum.label}</strong><br />
+                                {datum.value}% ({formatTimeWithFullWords(datum.data.hours || 0)})
+                              </div>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                </div>
+              </div>
+            </div>
+
+            {/* Commented out old content - removed to avoid parsing issues */}
+            {false && (
+            <div className="dashboard-page-container">
             <div className="dashboard-header">
               <h1>Welcome, {user?.name || 'User'}!</h1>
-              {/* OS Detection Debug Indicator */}
               <div style={{
                 position: 'absolute',
                 top: '10px',
@@ -977,11 +1511,11 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                 color: '#666',
                 border: '1px solid #ddd'
               }}>
-                🖥️ OS: {detectedOS}
+                OS Detection Debug Indicator
               </div>
             </div>
             
-            {error && (
+            {false && (
               <div className="error-message" style={{ 
                 background: '#ffebee', 
                 color: '#c62828', 
@@ -989,7 +1523,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                 borderRadius: '8px', 
                 margin: '16px 0' 
               }}>
-                {error}
+                Error message
               </div>
             )}
             
@@ -1010,7 +1544,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                     {currentActivity ? (
                       <div className="activity-info-simple">
                         <div className="app-icon">💻</div>
-                        <div className="app-name">{currentActivity.app_name}</div>
+                        <div className="app-name">{currentActivity?.app_name || ''}</div>
                       </div>
                     ) : (
                       <div className="no-activity">
@@ -1022,13 +1556,13 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                   <div className="stat-subtitle">
                     {currentActivity ? (
                       <div className="activity-info-horizontal">
-                        <div className="app-category">{currentActivity.app_category}</div>
+                        <div className="app-category">{currentActivity?.app_category || ''}</div>
                         <div className="app-time">
-                          {formatDurationWithFullWords(currentActivity.duration_hours, currentActivity.duration_minutes % 60)}
+                          {formatDurationWithFullWords(currentActivity?.duration_hours || 0, (currentActivity?.duration_minutes || 0) % 60)}
                         </div>
                         <div className="apps-count">
-                          {currentActivity.active_apps_count > 1 
-                            ? `${currentActivity.active_apps_count} apps active`
+                          {(currentActivity?.active_apps_count || 0) > 1 
+                            ? `${currentActivity?.active_apps_count || 0} apps active`
                             : 'Active'
                           }
                         </div>
@@ -1064,25 +1598,25 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                     <h3>Most Used App</h3>
                     <span className="stat-period">past week</span>
                   </div>
-                  <div className="stat-main">
-                    {mostUsedApp ? (
-                      <div className="activity-info-simple">
-                        <div className="app-icon">💻</div>
-                        <div className="app-name">{mostUsedApp.application}</div>
-                      </div>
-                    ) : (
-                      <div className="no-data-state">
-                        <span className="no-data-text">No tracked apps</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="stat-subtitle">
-                    {mostUsedApp ? (
-                      <div className="activity-info-horizontal">
-                        <div className="app-time">{mostUsedApp.time}</div>
-                      </div>
-                    ) : 'Enable app tracking'}
-                  </div>
+                    <div className="stat-main">
+                      {mostUsedApp ? (
+                        <div className="activity-info-simple">
+                          <div className="app-icon">💻</div>
+                          <div className="app-name">{mostUsedApp?.application || ''}</div>
+                        </div>
+                      ) : (
+                        <div className="no-data-state">
+                          <span className="no-data-text">No tracked apps</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="stat-subtitle">
+                      {mostUsedApp ? (
+                        <div className="activity-info-horizontal">
+                          <div className="app-time">{mostUsedApp?.time || ''}</div>
+                        </div>
+                      ) : 'Enable app tracking'}
+                    </div>
                 </div>
                 
                 <div className="stat-card ios-card">
@@ -1109,21 +1643,21 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                 <div className="chart-controls">
                   <button 
                     className={`chart-btn ${selectedTimePeriod === 'today' ? 'active' : ''}`}
-                    onClick={() => handleTimePeriodChange('today')}
+                    onClick={() => setSelectedTimePeriod('today')}
                     title="Press 1 for Today"
                   >
                     Today <span className="hotkey">1</span>
                   </button>
                   <button 
                     className={`chart-btn ${selectedTimePeriod === 'week' ? 'active' : ''}`}
-                    onClick={() => handleTimePeriodChange('week')}
+                    onClick={() => setSelectedTimePeriod('week')}
                     title="Press 2 for Week"
                   >
                     Week <span className="hotkey">2</span>
                   </button>
                   <button 
                     className={`chart-btn ${selectedTimePeriod === 'month' ? 'active' : ''}`}
-                    onClick={() => handleTimePeriodChange('month')}
+                    onClick={() => setSelectedTimePeriod('month')}
                     title="Press 3 for Month"
                   >
                     Month <span className="hotkey">3</span>
@@ -1336,9 +1870,11 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                     </div>
                   </div>
                 </div>
-                </div>
               </div>
             </div>
+            </div>
+            </div>
+            )}
           </div>
         )}
       </div>
