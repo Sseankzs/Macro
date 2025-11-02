@@ -93,6 +93,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   const [hoursTrackedThisWeek, setHoursTrackedThisWeek] = useState<number>(0);
   const [mostUsedApp, setMostUsedApp] = useState<AppTimeData | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   
   // State for charts
   const [selectedTimePeriod, setSelectedTimePeriod] = useState<'today' | 'week' | 'month'>('week');
@@ -181,6 +182,16 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
         }
         setApplications(appsForCalc);
 
+        // Store timeEntries in local state for direct access
+        setTimeEntries(timeEntries);
+
+        // Store data in cache for use by other effects
+        updateCache({
+          timeEntries: timeEntries,
+          applications: appsForCalc,
+          dataCacheTimestamp: Date.now()
+        });
+
         // Calculate hours tracked
         const today = new Date();
         const yesterday = new Date(today);
@@ -253,6 +264,40 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       clearInterval(activityInterval);
     };
   }, [currentActivity]);
+
+  // Recalculate chart and table data when time period changes
+  useEffect(() => {
+    if (!loading && applications.length > 0) {
+      // Use local timeEntries state, fallback to cache if needed
+      const entries = timeEntries.length > 0 ? timeEntries : (cache.timeEntries || []);
+      
+      console.log('🔄 Recalculating data for period:', selectedTimePeriod, {
+        entriesCount: entries.length,
+        appsCount: applications.length
+      });
+      
+      if (entries.length > 0) {
+        // Calculate application time data for table
+        const aggregatedData = aggregateTimeByApplication(entries, applications, selectedTimePeriod);
+        setApplicationTimeData(aggregatedData);
+        
+        // Calculate category data for pie chart
+        const categoryChartData = aggregateTimeByCategory(entries, applications, selectedTimePeriod);
+        setCategoryData(categoryChartData);
+        
+        // Calculate daily time data for bar chart
+        const dailyTimeResult = aggregateDailyTimeByCategory(entries, applications, selectedTimePeriod);
+        setDailyTimeData(dailyTimeResult.data);
+        setChartCategories(dailyTimeResult.categories);
+      } else {
+        // No time entries - clear all data
+        setApplicationTimeData([]);
+        setCategoryData([]);
+        setDailyTimeData([]);
+        setChartCategories([]);
+      }
+    }
+  }, [selectedTimePeriod, applications, timeEntries, loading]);
 
   // Calculate task statistics
   const getTaskStats = () => {
@@ -369,10 +414,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       return [];
     }
     
-    if (!apps || apps.length === 0) {
-      console.log('📊 No applications available');
-      return [];
-    }
+    // Proceed even if apps list is empty; fall back to unknown labels
     
     // Create a map of app_id to app name
     const appMap = new Map<string, Application>();
@@ -458,18 +500,13 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     
     for (const [appId, hours] of appTimeMap.entries()) {
       const app = appMap.get(appId);
-      if (!app) {
-        console.warn('⚠️ App not found for ID:', appId);
-        continue;
-      }
-      
       // Only include apps with meaningful time (at least 1 minute)
       if (hours >= 1/60) {
         result.push({
-          application: app.name,
+          application: app ? app.name : `Unknown App (${appId.slice(0, 6)})`,
           time: formatTimeWithFullWords(hours),
           hours: hours,
-          category: app.category
+          category: app ? app.category : 'Uncategorized'
         });
       }
     }
@@ -485,7 +522,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   const aggregateTimeByCategory = (timeEntries: TimeEntry[], apps: Application[], timePeriod: 'today' | 'week' | 'month') => {
     console.log('🥧 Aggregating time by category for period:', timePeriod);
     
-    if (!timeEntries || timeEntries.length === 0 || !apps || apps.length === 0) {
+    if (!timeEntries || timeEntries.length === 0) {
       console.log('🥧 No data available for category aggregation');
       return [];
     }
@@ -577,9 +614,9 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   const aggregateDailyTimeByCategory = (timeEntries: TimeEntry[], apps: Application[], timePeriod: 'today' | 'week' | 'month') => {
     console.log('📊 Aggregating daily time by category for period:', timePeriod);
     
-    if (!timeEntries || timeEntries.length === 0 || !apps || apps.length === 0) {
+    if (!timeEntries || timeEntries.length === 0) {
       console.log('📊 No data available for daily aggregation');
-      return [];
+      return { data: [], categories: [] };
     }
 
     // Create a map of app_id to app category
@@ -589,7 +626,10 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     });
 
     // Get unique categories for dynamic keys
-    const allCategories = Array.from(new Set(apps.map(app => app.category || 'Uncategorized')));
+    let allCategories = Array.from(new Set(apps.map(app => app.category || 'Uncategorized')));
+    if (allCategories.length === 0) {
+      allCategories = ['Uncategorized'];
+    }
     
     // Determine the date range based on time period
     const now = new Date();
@@ -1066,51 +1106,6 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     };
   }, []);
 
-  // Update application time data when time period changes
-  useEffect(() => {
-    console.log('🔄 useEffect triggered:', { 
-      applicationsLength: applications.length, 
-      timeEntriesLength: cache.timeEntries?.length || 0, 
-      selectedTimePeriod,
-      loading
-    });
-    
-    // Only process if we're not loading and have real data available
-    if (!loading && applications.length > 0 && cache.timeEntries && cache.timeEntries.length > 0) {
-      console.log('🔄 Processing real table data...');
-      const aggregatedData = aggregateTimeByApplication(cache.timeEntries, applications, selectedTimePeriod);
-      console.log('📊 Aggregated data for', selectedTimePeriod, ':', aggregatedData);
-      setApplicationTimeData(aggregatedData);
-      
-      // Calculate category data for pie chart
-      const categoryChartData = aggregateTimeByCategory(cache.timeEntries, applications, selectedTimePeriod);
-      setCategoryData(categoryChartData);
-      
-      // Calculate daily time data for bar chart
-      const dailyTimeResult = aggregateDailyTimeByCategory(cache.timeEntries, applications, selectedTimePeriod);
-      if (Array.isArray(dailyTimeResult)) {
-        setDailyTimeData([]);
-        setChartCategories([]);
-      } else {
-        setDailyTimeData(dailyTimeResult.data);
-        setChartCategories(dailyTimeResult.categories);
-      }
-      
-      // Update cache with the new aggregated data
-      updateCache({
-        applicationTimeData: aggregatedData
-      });
-    } else if (!loading) {
-      // No real data available - show empty state
-      console.log('� No real data available, setting empty array...');
-      setApplicationTimeData([]);
-      setCategoryData([]);
-      setDailyTimeData([]);
-      setChartCategories([]);
-    }
-  }, [selectedTimePeriod, applications, cache.timeEntries, loading]);
-  */
-
   // Commented out old handler
   // const handleTimePeriodChange = (period: 'today' | 'week' | 'month') => {
   //   console.log('🔄 Time period changing from', selectedTimePeriod, 'to', period);
@@ -1254,7 +1249,7 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                   <div className="stat-card ios-card tracked-today-card">
                     <div className="stat-header">
                       <h3>Tracked Today</h3>
-                      <span className="stat-period">vs yesterday</span>
+                      <span className="stat-period"></span>
                     </div>
                     <div className="stat-main">
                       <>
@@ -1315,57 +1310,87 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
             <div className="charts-section">
               <div className="charts-header">
                 <h2 className="section-title">Time Distribution</h2>
-                <div className="chart-controls">
-                  <button 
-                    className={`chart-btn ${selectedTimePeriod === 'today' ? 'active' : ''}`}
-                    onClick={() => setSelectedTimePeriod('today')}
-                    title="Press 1 for Today"
-                  >
-                    Today <span className="hotkey">1</span>
-                  </button>
-                  <button 
-                    className={`chart-btn ${selectedTimePeriod === 'week' ? 'active' : ''}`}
-                    onClick={() => setSelectedTimePeriod('week')}
-                    title="Press 2 for Week"
-                  >
-                    Week <span className="hotkey">2</span>
-                  </button>
-                  <button 
-                    className={`chart-btn ${selectedTimePeriod === 'month' ? 'active' : ''}`}
-                    onClick={() => setSelectedTimePeriod('month')}
-                    title="Press 3 for Month"
-                  >
-                    Month <span className="hotkey">3</span>
-                  </button>
-                </div>
               </div>
               
-              {/* Charts Grid - Two column layout */}
-              <div className="charts-grid">
-                {/* Left Column - Charts */}
-                <div className="charts-left-column">
-                  
-                  {/* Monthly Calendar - Show for Month view only */}
-                  {selectedTimePeriod === 'month' && (
-                    <div className="chart-card ios-card">
-                      <div className="chart-header">
-                        <h3>Monthly Activity Calendar</h3>
-                      </div>
-                      <MonthlyCalendar 
-                        timeEntries={cache.timeEntries || []}
-                        applications={applications}
-                        maxHoursPerDay={12}
-                      />
+              {/* App Category Breakdown and Month Calendar Section */}
+              <div className="category-calendar-section">
+                {/* Chart Card - Switches between Today (Pie) and Week (Bar) */}
+                <div className="chart-card ios-card">
+                  <div className="chart-header">
+                    <h3>{selectedTimePeriod === 'today' ? 'App Category Breakdown' : 'Daily Distribution'}</h3>
+                    <div className="chart-controls">
+                      <button 
+                        className={`chart-btn ${selectedTimePeriod === 'today' ? 'active' : ''}`}
+                        onClick={() => setSelectedTimePeriod('today')}
+                        title="Press 1 for Today"
+                      >
+                        Today <span className="hotkey">1</span>
+                      </button>
+                      <button 
+                        className={`chart-btn ${selectedTimePeriod === 'week' ? 'active' : ''}`}
+                        onClick={() => setSelectedTimePeriod('week')}
+                        title="Press 2 for Week"
+                      >
+                        Week <span className="hotkey">2</span>
+                      </button>
                     </div>
+                  </div>
+                  
+                  {/* Today View - Pie Chart */}
+                  {selectedTimePeriod === 'today' && (
+                    <>
+                      {loading ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">Loading categories...</span>
+                        </div>
+                      ) : categoryData.length === 0 ? (
+                        <div className="chart-empty-state">
+                          <span className="empty-text">No category data</span>
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                            Track some applications to see category breakdown
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="nivo-pie-container">
+                          <ResponsivePie
+                            key={`pie-${windowWidth}-${selectedTimePeriod}`}
+                            data={categoryData}
+                            margin={windowWidth > 768 ? 
+                              { top: 20, right: 120, bottom: 20, left: 20 } : 
+                              { top: 20, right: 20, bottom: 20, left: 20 }
+                            }
+                            innerRadius={windowWidth > 768 ? 0 : 0}
+                            padAngle={windowWidth > 768 ? 0.7 : 0.5}
+                            cornerRadius={windowWidth > 768 ? 3 : 2}
+                            colors={['#5DADE2', '#48C9B0', '#52BE80', '#F4D03F', '#EB984E']}
+                            borderWidth={1}
+                            borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
+                            arcLabelsSkipAngle={10}
+                            arcLabelsTextColor="#333333"
+                            animate={true}
+                            enableArcLabels={false}
+                            tooltip={({ datum }) => (
+                              <div style={{
+                                background: 'rgba(0, 0, 0, 0.8)',
+                                color: 'white',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                border: 'none'
+                              }}>
+                                <strong>{datum.label}</strong><br />
+                                {datum.value}% ({formatTimeWithFullWords(datum.data.hours || 0)})
+                              </div>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                   
-                  {/* Daily Time Distribution Chart - Show for Week view only */}
+                  {/* Week View - Bar Chart */}
                   {selectedTimePeriod === 'week' && (
-                    <div className="chart-card ios-card">
-                      <div className="chart-header">
-                        <h3>Daily Distribution</h3>
-                        <span className="chart-period">{selectedTimePeriod}</span>
-                      </div>
+                    <>
                       {loading ? (
                         <div className="chart-empty-state">
                           <span className="empty-text">Loading daily data...</span>
@@ -1432,67 +1457,20 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
                           />
                         </div>
                       )}
-                    </div>
+                    </>
                   )}
-                  
-                  {/* App Category Breakdown Chart - Show for Today view only */}
-                  {selectedTimePeriod === 'today' && (
-                    <div className="chart-card ios-card">
-                      <div className="chart-header">
-                        <h3>App Category Breakdown</h3>
-                        <span className="chart-period">{selectedTimePeriod}</span>
-                      </div>
-                      {loading ? (
-                        <div className="chart-empty-state">
-                          <span className="empty-text">Loading categories...</span>
-                        </div>
-                      ) : categoryData.length === 0 ? (
-                        <div className="chart-empty-state">
-                          <span className="empty-text">No category data</span>
-                          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
-                            Track some applications to see category breakdown
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="nivo-pie-container">
-                          <ResponsivePie
-                            key={`pie-${windowWidth}-${selectedTimePeriod}`}
-                            data={categoryData}
-                            margin={windowWidth > 768 ? 
-                              { top: 20, right: 120, bottom: 20, left: 20 } : 
-                              { top: 20, right: 20, bottom: 20, left: 20 }
-                            }
-                            innerRadius={windowWidth > 768 ? 0 : 0}
-                            padAngle={windowWidth > 768 ? 0.7 : 0.5}
-                            cornerRadius={windowWidth > 768 ? 3 : 2}
-                            colors={['#5DADE2', '#48C9B0', '#52BE80', '#F4D03F', '#EB984E']}
-                            borderWidth={1}
-                            borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
-                            arcLabelsSkipAngle={10}
-                            arcLabelsTextColor="#333333"
-                            animate={true}
-                            enableArcLabels={false}
-                            tooltip={({ datum }) => (
-                              <div style={{
-                                background: 'rgba(0, 0, 0, 0.8)',
-                                color: 'white',
-                                padding: '8px 12px',
-                                borderRadius: '8px',
-                                fontSize: '12px',
-                                border: 'none'
-                              }}>
-                                <strong>{datum.label}</strong><br />
-                                {datum.value}% ({formatTimeWithFullWords(datum.data.hours || 0)})
-                              </div>
-                            )}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
+                </div>
+                
+                {/* Month Calendar */}
+                <div className="month-calendar-header">
+                  <MonthlyCalendar 
+                    timeEntries={timeEntries.length > 0 ? timeEntries : (cache.timeEntries || [])}
+                    applications={applications}
+                    maxHoursPerDay={12}
+                  />
                 </div>
               </div>
+              
             </div>
 
             {/* Commented out old content - removed to avoid parsing issues */}

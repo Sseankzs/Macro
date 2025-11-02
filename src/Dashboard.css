@@ -1095,10 +1095,77 @@ input, select, textarea {
 }
 
 .charts-header {
+  margin-bottom: 1rem;
+}
+
+.category-calendar-section {
+  display: grid;
+  grid-template-columns: 1fr 480px;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  align-items: start;
+}
+
+.category-calendar-section .chart-card {
+  min-width: 0;
+}
+
+.category-calendar-section .month-calendar-header {
+  flex-shrink: 0;
+  min-width: 480px;
+}
+
+.month-calendar-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.25rem;
+  min-width: 0;
+}
+
+.month-calendar-header .monthly-calendar {
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  width: 100%;
+  min-width: 480px;
+}
+
+.month-calendar-header .calendar-header {
+  margin-bottom: 1rem;
+}
+
+.month-calendar-header .calendar-title {
+  font-size: var(--font-xl);
+}
+
+.month-calendar-header .nav-button {
+  width: 100px;
+  height: 32px;
+  font-size: var(--font-sm);
+}
+
+.month-calendar-header .nav-month-indicator {
+  font-size: 0.625rem;
+}
+
+.month-calendar-header .day-names {
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.month-calendar-header .day-name {
+  font-size: var(--font-sm);
+  padding: 0.5rem 0;
+}
+
+.month-calendar-header .calendar-grid {
+  gap: 0.5rem;
+}
+
+.month-calendar-header .calendar-day {
+  min-height: 40px;
+  font-size: var(--font-sm);
 }
 
 .charts-grid {
@@ -1250,6 +1317,23 @@ input, select, textarea {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
+}
+
+.chart-header .chart-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chart-header-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.chart-header-compact .chart-controls {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .chart-header h3 {
@@ -1620,10 +1704,19 @@ input, select, textarea {
     grid-template-columns: 1fr;
   }
   
-  .charts-header {
-    flex-direction: column;
-    align-items: flex-start;
+  .category-calendar-section {
+    grid-template-columns: 1fr;
     gap: 1rem;
+  }
+  
+  .category-calendar-section .month-calendar-header {
+    width: 100%;
+    min-width: unset;
+  }
+  
+  .category-calendar-section .month-calendar-header .monthly-calendar {
+    width: 100%;
+    min-width: unset;
   }
   
   .nivo-container {

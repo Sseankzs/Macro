@@ -33,7 +33,7 @@
 }
 
 .nav-month-indicator {
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   font-weight: 500;
   color: #8e8e93;
   text-transform: uppercase;
@@ -123,16 +123,18 @@
 }
 
 .day-number {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: #495057;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.0rem;
+  padding-top: 0.0rem;
 }
 
 .progress-container {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
+  margin-top: -0.125rem;
 }
 
 .progress-container svg {
@@ -254,8 +256,8 @@
   }
   
   .progress-container {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
   }
   
   .hours-text {
@@ -278,8 +280,8 @@
   }
   
   .progress-container {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
   }
   
   .day-number {
