@@ -20,13 +20,15 @@ interface BackendTask {
   id: string;
   title: string;
   description?: string;
-  project_id: string | null;
+  workspace_id?: string | null;
   assignee_id?: string;
+  assigned_to?: string[]; // Array of UUIDs as per schema
   status: 'todo' | 'in_progress' | 'done'; // Backend returns lowercase
   priority?: 'low' | 'medium' | 'high'; // Backend returns lowercase
   due_date?: string;
   created_at: string;
   updated_at: string;
+  created_by?: string;
 }
 
 // Frontend Task interface (for UI display)
@@ -34,7 +36,6 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  project_id: string;
   assignee_id?: string;
   status: 'Todo' | 'InProgress' | 'Done';
   priority: 'Low' | 'Medium' | 'High';
@@ -43,7 +44,8 @@ interface Task {
   updated_at: string;
   // UI-specific fields
   assignee_name?: string;
-  project_name?: string;
+  // Multi-assignee support
+  assignees?: TeamMember[];
 }
 
 // Team member interface for task assignment
@@ -63,17 +65,6 @@ interface Team {
   updated_at?: string;
 }
 
-// Project interface
-interface Project {
-  id: string;
-  name: string;
-  team_id?: string;
-  manager_id?: string;
-  description?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
 interface TaskPageProps {
   onLogout: () => void;
   onPageChange?: (page: 'dashboard' | 'tasks' | 'teams' | 'register-apps' | 'metric-builder' | 'logs' | 'ai-assistant') => void;
@@ -83,10 +74,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]); // Store all tasks
   const [teams, setTeams] = useState<Team[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingTasks, setLoadingTasks] = useState(false); // Loading state for team switching
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
@@ -116,6 +107,267 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   // Edit team state
   const [showEditTeamPopup, setShowEditTeamPopup] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+
+  // Load assignees for a specific task
+  const loadTaskAssignees = async (taskId: string): Promise<TeamMember[]> => {
+    try {
+      console.log('🔍 loadTaskAssignees: Loading assignees for task:', taskId);
+      
+      if (isTauri()) {
+        // Get all assignees from the backend
+        const allAssignees = await invoke<any[]>('get_all_assignees');
+        console.log('🔍 loadTaskAssignees: All assignees from backend:', allAssignees);
+        
+        // Filter assignees for this specific task
+        const taskAssignees = allAssignees.filter((assignee: any) => assignee.task_id === taskId);
+        console.log('🔍 loadTaskAssignees: Assignees for task', taskId, ':', taskAssignees);
+        
+        // Fetch user details for each assignee
+        const assigneesWithDetails: TeamMember[] = await Promise.all(
+          taskAssignees.map(async (assignee: any) => {
+            try {
+              const user = await invoke('get_user', { userId: assignee.user_id }) as any;
+              if (user) {
+                return {
+                  id: user.id,
+                  name: user.name,
+                  team_id: user.team_id || user.workspace_id,
+                  role: 'member', // Default role
+                  email: user.email
+                };
+              } else {
+                // Fallback if user not found
+                return {
+                  id: assignee.user_id,
+                  name: assignee.user_id,
+                  team_id: taskId, // Use task ID as fallback
+                  role: 'member'
+                };
+              }
+            } catch (userErr) {
+              console.warn('🔍 loadTaskAssignees: Failed to get user details for', assignee.user_id, ':', userErr);
+              // Return fallback user info
+              return {
+                id: assignee.user_id,
+                name: assignee.user_id,
+                team_id: taskId,
+                role: 'member'
+              };
+            }
+          })
+        );
+        
+        console.log('🔍 loadTaskAssignees: Final assignees with details:', assigneesWithDetails);
+        return assigneesWithDetails;
+      } else {
+        // For browser/Supabase mode, use direct Supabase queries
+        const { data: assignees, error } = await supabase
+          .from('assignee')
+          .select('id, user_id, task_id')
+          .eq('task_id', taskId);
+        
+        if (error) {
+          console.error('🔍 loadTaskAssignees: Supabase error:', error);
+          return [];
+        }
+        
+        if (!assignees || assignees.length === 0) {
+          console.log('🔍 loadTaskAssignees: No assignees found for task', taskId);
+          return [];
+        }
+        
+        // Fetch user details for each assignee
+        const assigneesWithDetails: TeamMember[] = await Promise.all(
+          assignees.map(async (assignee: any) => {
+            try {
+              const { data: user, error: userError } = await supabase
+                .from('users')
+                .select('id, name, email')
+                .eq('id', assignee.user_id)
+                .single();
+              
+              if (userError || !user) {
+                console.warn('🔍 loadTaskAssignees: Failed to get user details for', assignee.user_id);
+                return {
+                  id: assignee.user_id,
+                  name: assignee.user_id,
+                  team_id: taskId,
+                  role: 'member'
+                };
+              }
+              
+              return {
+                id: user.id,
+                name: user.name,
+                team_id: taskId,
+                role: 'member',
+                email: user.email
+              };
+            } catch (userErr) {
+              console.warn('🔍 loadTaskAssignees: Error fetching user:', userErr);
+              return {
+                id: assignee.user_id,
+                name: assignee.user_id,
+                team_id: taskId,
+                role: 'member'
+              };
+            }
+          })
+        );
+        
+        console.log('🔍 loadTaskAssignees: Supabase assignees with details:', assigneesWithDetails);
+        return assigneesWithDetails;
+      }
+    } catch (err) {
+      console.error('❌ Failed to load task assignees:', err);
+      return [];
+    }
+  };
+
+  // Load assignees for all tasks at once (optimized version)
+  const loadAllTaskAssignees = async (tasks: Task[]) => {
+    try {
+      console.log('🔍 loadAllTaskAssignees: Loading assignees for all tasks...');
+      
+      if (isTauri()) {
+        // Get all assignees from the backend once
+        const allAssignees = await invoke<any[]>('get_all_assignees');
+        console.log('🔍 loadAllTaskAssignees: All assignees from backend:', allAssignees);
+        
+        // Group assignees by task_id for efficient lookup
+        const assigneesByTaskId: Record<string, any[]> = {};
+        allAssignees.forEach((assignee: any) => {
+          if (!assigneesByTaskId[assignee.task_id]) {
+            assigneesByTaskId[assignee.task_id] = [];
+          }
+          assigneesByTaskId[assignee.task_id].push(assignee);
+        });
+        
+        // For each task, populate its assignees
+        for (const task of tasks) {
+          const taskAssignees = assigneesByTaskId[task.id] || [];
+          console.log('🔍 loadAllTaskAssignees: Assignees for task', task.id, ':', taskAssignees);
+          
+          // Fetch user details for each assignee of this task
+          const assigneesWithDetails: TeamMember[] = await Promise.all(
+            taskAssignees.map(async (assignee: any) => {
+              try {
+                const user = await invoke('get_user', { userId: assignee.user_id }) as any;
+                if (user) {
+                  return {
+                    id: user.id,
+                    name: user.name,
+                    team_id: user.team_id || user.workspace_id,
+                    role: 'member'
+                  };
+                } else {
+                  // Fallback if user not found
+                  return {
+                    id: assignee.user_id,
+                    name: assignee.user_id,
+                    team_id: task.id,
+                    role: 'member'
+                  };
+                }
+              } catch (userErr) {
+                console.warn('🔍 loadAllTaskAssignees: Failed to get user details for', assignee.user_id, ':', userErr);
+                // Return fallback user info
+                return {
+                  id: assignee.user_id,
+                  name: assignee.user_id,
+                  team_id: task.id,
+                  role: 'member'
+                };
+              }
+            })
+          );
+          
+          // Update the task with assignees
+          task.assignees = assigneesWithDetails;
+        }
+        
+        console.log('🔍 loadAllTaskAssignees: All tasks updated with assignees');
+      } else {
+        // For browser/Supabase mode, use direct Supabase queries
+        const { data: allAssignees, error } = await supabase
+          .from('assignee')
+          .select('id, user_id, task_id');
+        
+        if (error) {
+          console.error('🔍 loadAllTaskAssignees: Supabase error:', error);
+          return;
+        }
+        
+        if (!allAssignees || allAssignees.length === 0) {
+          console.log('🔍 loadAllTaskAssignees: No assignees found');
+          return;
+        }
+        
+        // Group assignees by task_id for efficient lookup
+        const assigneesByTaskId: Record<string, any[]> = {};
+        allAssignees.forEach((assignee: any) => {
+          if (!assigneesByTaskId[assignee.task_id]) {
+            assigneesByTaskId[assignee.task_id] = [];
+          }
+          assigneesByTaskId[assignee.task_id].push(assignee);
+        });
+        
+        // For each task, populate its assignees
+        for (const task of tasks) {
+          const taskAssignees = assigneesByTaskId[task.id] || [];
+          
+          // Fetch user details for each assignee of this task
+          const assigneesWithDetails: TeamMember[] = await Promise.all(
+            taskAssignees.map(async (assignee: any) => {
+              try {
+                const { data: user, error: userError } = await supabase
+                  .from('users')
+                  .select('id, name, email')
+                  .eq('id', assignee.user_id)
+                  .single();
+                
+                if (userError || !user) {
+                  console.warn('🔍 loadAllTaskAssignees: Failed to get user details for', assignee.user_id);
+                  return {
+                    id: assignee.user_id,
+                    name: assignee.user_id,
+                    team_id: task.id,
+                    role: 'member'
+                  };
+                }
+                
+                return {
+                  id: user.id,
+                  name: user.name,
+                  team_id: task.id,
+                  role: 'member'
+                };
+              } catch (userErr) {
+                console.warn('🔍 loadAllTaskAssignees: Error fetching user:', userErr);
+                return {
+                  id: assignee.user_id,
+                  name: assignee.user_id,
+                  team_id: task.id,
+                  role: 'member'
+                };
+              }
+            })
+          );
+          
+          // Update the task with assignees
+          task.assignees = assigneesWithDetails;
+        }
+        
+        console.log('🔍 loadAllTaskAssignees: All tasks updated with assignees (Supabase)');
+      }
+    } catch (err) {
+      console.error('❌ Failed to load all task assignees:', err);
+      // Set empty assignees for all tasks on error
+      tasks.forEach(task => {
+        task.assignees = [];
+      });
+    }
+  };
 
   // Load teams data independently (only teams user is a member of)
   const loadTeamsData = async () => {
@@ -154,44 +406,21 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     }
   };
 
-  // Load projects data independently
-  const loadProjectsData = async () => {
-    try {
-      if (isTauri()) {
-        const backendProjects = await invoke('get_all_projects') as Project[];
-        console.log('✅ Projects loaded successfully:', backendProjects);
-        setProjects(backendProjects);
-      } else {
-        // Browser mode - use mock data
-        const mockProjects: Project[] = [
-          { id: 'project-1', name: 'Frontend App', team_id: '1' },
-          { id: 'project-2', name: 'Backend API', team_id: '2' },
-        ];
-        setProjects(mockProjects);
-      }
-    } catch (err) {
-      console.error('❌ Failed to load projects:', err);
-      // Projects failure doesn't prevent other data from loading
-    }
-  };
-
   // Load tasks data independently
   const loadTasksData = async () => {
     try {
       if (isTauri()) {
-        const [backendTasks, backendMembers, backendProjects] = await Promise.all([
+        const [backendTasks, backendMembers] = await Promise.all([
           invoke('get_my_tasks') as Promise<BackendTask[]>,
-          invoke('get_all_users') as Promise<TeamMember[]>,
-          invoke('get_all_projects') as Promise<Project[]>
+          invoke('get_all_users') as Promise<TeamMember[]>
         ]);
         
         console.log('✅ Tasks and related data loaded successfully');
         console.log('Backend tasks:', JSON.stringify(backendTasks, null, 2));
         
-        // Transform tasks with proper assignee and project names
+        // Transform tasks with proper assignee names (no projects) - without assignees first
         const transformedTasks: Task[] = await Promise.all(backendTasks.map(async (task) => {
           const assignee = backendMembers.find(member => member.id === task.assignee_id);
-          const project = backendProjects.find(proj => proj.id === task.project_id);
           
           // Convert backend status to frontend status
           const frontendStatus = task.status === 'todo' ? 'Todo' :
@@ -212,7 +441,6 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             id: task.id,
             title,
             description,
-            project_id: task.project_id || '',
             assignee_id: task.assignee_id,
             status: frontendStatus,
             priority: frontendPriority,
@@ -220,9 +448,13 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             created_at: task.created_at,
             updated_at: task.updated_at,
             assignee_name: assignee?.name,
-            project_name: project?.name || 'Unassigned Project'
+            assignees: [] // Will be populated later
           };
         }));
+
+        // Now load all assignees once at the end
+        console.log('🔍 Loading all assignees after task transformation...');
+        await loadAllTaskAssignees(transformedTasks);
 
         console.log('=== FRONTEND TRANSFORMATION DEBUG ===');
         console.log('Transformed tasks:', JSON.stringify(transformedTasks, null, 2));
@@ -230,13 +462,12 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         
         setAllTasks(transformedTasks);
       } else {
-        // Browser mode - use mock data
+        // Browser mode - use mock data (without projects)
         const mockTasks: Task[] = [
           {
             id: '1',
             title: 'Implement user authentication',
             description: 'Add login and registration functionality',
-            project_id: 'project-1',
             assignee_id: 'user-1',
             status: 'Todo',
             priority: 'High',
@@ -244,13 +475,15 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             assignee_name: 'John Doe',
-            project_name: 'Frontend App'
+            assignees: [
+              { id: 'user-1', name: 'John Doe', team_id: 'team-1', role: 'member' },
+              { id: 'user-2', name: 'Jane Smith', team_id: 'team-1', role: 'member' }
+            ]
           },
           {
             id: '2',
             title: 'Fix responsive design issues',
             description: 'Resolve mobile layout problems',
-            project_id: 'project-1',
             assignee_id: 'user-2',
             status: 'InProgress',
             priority: 'Medium',
@@ -258,13 +491,14 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             assignee_name: 'Jane Smith',
-            project_name: 'Frontend App'
+            assignees: [
+              { id: 'user-2', name: 'Jane Smith', team_id: 'team-1', role: 'member' }
+            ]
           },
           {
             id: '3',
             title: 'Write API documentation',
             description: 'Document all REST API endpoints',
-            project_id: 'project-2',
             assignee_id: 'user-1',
             status: 'Done',
             priority: 'Low',
@@ -272,7 +506,10 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             assignee_name: 'John Doe',
-            project_name: 'Backend API'
+            assignees: [
+              { id: 'user-1', name: 'John Doe', team_id: 'team-1', role: 'member' },
+              { id: 'user-3', name: 'Alice Johnson', team_id: 'team-1', role: 'manager' }
+            ]
           }
         ];
         setAllTasks(mockTasks);
@@ -283,20 +520,106 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     }
   };
 
+  // Load tasks for a specific workspace using the new backend command
+  const loadTasksByWorkspace = async (workspaceId: string) => {
+    setLoadingTasks(true);
+    setError(null);
+    
+    try {
+      if (isTauri()) {
+        // First, load just the tasks for the workspace
+        const backendTasks = await invoke('get_tasks_by_workspace', { workspaceId }) as BackendTask[];
+        console.log('✅ Tasks for workspace loaded successfully:', workspaceId);
+        console.log('Backend tasks for workspace:', JSON.stringify(backendTasks, null, 2));
+        
+        // Try to load related data, but don't fail if they don't exist
+        let backendMembers: TeamMember[] = [];
+        
+        try {
+          backendMembers = await invoke('get_all_users') as TeamMember[];
+        } catch (userError) {
+          console.warn('Could not load users:', userError);
+        }
+        
+        // Transform tasks with proper assignee names (no projects) - without assignees first
+        const transformedTasks: Task[] = await Promise.all(backendTasks.map(async (task) => {
+          const assignee = backendMembers.find(member => member.id === task.assignee_id);
+          
+          // Convert backend status to frontend status
+          const frontendStatus = task.status === 'todo' ? 'Todo' :
+                                task.status === 'in_progress' ? 'InProgress' : 'Done';
+          
+          // Convert backend priority to frontend priority
+          const frontendPriority = task.priority === 'low' ? 'Low' :
+                                  task.priority === 'medium' ? 'Medium' :
+                                  task.priority === 'high' ? 'High' : 'Medium';
+          
+          // Decrypt fields if encrypted
+          const title = E2EE_TASKS && isEncrypted(task.title) ? await decryptTextForTeam(task.title) : task.title;
+          const description = E2EE_TASKS && task.description && isEncrypted(task.description) 
+            ? await decryptTextForTeam(task.description)
+            : (task.description || '');
+          
+          return {
+            id: task.id,
+            title,
+            description,
+            assignee_id: task.assignee_id,
+            status: frontendStatus,
+            priority: frontendPriority,
+            due_date: task.due_date,
+            created_at: task.created_at,
+            updated_at: task.updated_at,
+            assignee_name: assignee?.name,
+            assignees: [] // Will be populated later
+          };
+        }));
+
+        // Now load all assignees once at the end
+        console.log('🔍 Loading all assignees for workspace tasks...');
+        await loadAllTaskAssignees(transformedTasks);
+
+        console.log('=== WORKSPACE TASKS TRANSFORMATION DEBUG ===');
+        console.log('Transformed workspace tasks:', JSON.stringify(transformedTasks, null, 2));
+        console.log('============================================');
+        
+        setTasks(transformedTasks);
+      } else {
+        // Browser mode - filter mock data by workspace (for demo purposes)
+        const mockWorkspaceTasks = allTasks.filter(() => {
+          // In browser mode, we'll simulate workspace filtering
+          // You can customize this logic based on your mock data structure
+          return true; // For now, show all tasks in browser mode
+        });
+        setTasks(mockWorkspaceTasks);
+      }
+    } catch (err) {
+      console.error('❌ Failed to load tasks for workspace:', workspaceId, err);
+      setError(`Failed to load tasks for workspace: ${err}`);
+      setTasks([]);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
   // Refresh functions for individual data types
-  const refreshTeams = () => loadTeamsData();
-  const refreshProjects = () => loadProjectsData();
-  const refreshTasks = () => loadTasksData();
+  const refreshTasks = () => {
+    if (selectedTeam) {
+      loadTasksByWorkspace(selectedTeam);
+    } else {
+      setLoadingTasks(true);
+      loadTasksData().finally(() => setLoadingTasks(false));
+    }
+  };
 
   // Load all data from backend with independent error handling
   const loadAllData = async () => {
     setLoading(true);
     setError(null);
     
-    // Load all data independently - if one fails, others can still succeed
+    // Load data independently - if one fails, others can still succeed
     await Promise.allSettled([
       loadTeamsData(),
-      loadProjectsData(), 
       loadTasksData()
     ]);
 
@@ -313,14 +636,21 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     try {
       if (isTauri()) {
         const members = await invoke('get_users_by_team', { teamId }) as any[];
+        console.log('🔍 Raw members from backend:', members);
+        
         // Map backend User objects to TeamMember with role
-        const teamMembers: TeamMember[] = members.map((user: any) => ({
-          id: user.id,
-          name: user.name,
-          team_id: teamId,
-          role: user.role || 'member', // Default to 'member' if no role
-          currentApp: 'sleeping' // Default, will be updated below
-        }));
+        const teamMembers: TeamMember[] = members.map((user: any) => {
+          console.log('🔍 Processing user:', user.name, 'role:', user.role);
+          return {
+            id: user.id,
+            name: user.name,
+            team_id: teamId,
+            role: user.role || 'member', // Default to 'member' if no role
+            currentApp: 'sleeping' // Default, will be updated below
+          };
+        });
+        
+        console.log('🔍 Mapped team members:', teamMembers);
         
         // Fetch current app for each member (in parallel)
         const membersWithApps = await Promise.all(
@@ -378,18 +708,9 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       return;
     }
     
-    // Get projects for the selected team
-    const teamProjectIds = projects
-      .filter(project => project.team_id === selectedTeam)
-      .map(project => project.id);
-    
-    // Filter tasks that belong to team projects
-    const filteredTasks = allTasks.filter(task => 
-      teamProjectIds.includes(task.project_id)
-    );
-    
-    setTasks(filteredTasks);
-  }, [selectedTeam, allTasks, projects]);
+    // Load tasks for the selected workspace directly
+    loadTasksByWorkspace(selectedTeam);
+  }, [selectedTeam]);
 
   // Load team members when team is selected
   useEffect(() => {
@@ -932,10 +1253,24 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         )}
         
         <div className="task-meta">
-          {task.assignee_name && (
+          {task.assignees && task.assignees.length > 0 ? (
+            <div className="task-assignees">
+              {task.assignees.map((assignee) => (
+                <div key={assignee.id} className="task-assignee-tag">
+                  <span className="assignee-avatar">👤</span>
+                  <span className="assignee-name">{assignee.name}</span>
+                </div>
+              ))}
+            </div>
+          ) : task.assignee_name ? (
             <div className="task-assignee">
               <span className="assignee-avatar">👤</span>
               <span className="assignee-name">{task.assignee_name}</span>
+            </div>
+          ) : (
+            <div className="task-assignee">
+              <span className="assignee-avatar">👤</span>
+              <span className="assignee-name">-</span>
             </div>
           )}
           
@@ -1062,7 +1397,8 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                     <button 
                       className="btn-text" 
                       onClick={() => setShowAddTaskModal(true)}
-                      disabled={loading}
+                      disabled={loading || !selectedTeam}
+                      title={!selectedTeam ? "Please select a team/workspace first" : "Add new task"}
                     >
                       +
                     </button>
@@ -1135,7 +1471,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
               </div>
             )}
             
-            {loading ? (
+            {loading || loadingTasks ? (
               <TasksSkeletonGrid />
             ) : (
               <div className="task-board">
@@ -1181,50 +1517,81 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                 <div className="members-empty">No members in this team</div>
               ) : (
                 (() => {
-                  // Group members by role (Discord-style)
-                  const groupedMembers: Record<string, TeamMember[]> = {};
+                  // Group members by role - specifically Owner vs Member
+                  const owners: TeamMember[] = [];
+                  const members: TeamMember[] = [];
+                  
+                  console.log('🔍 Segregating members. Total members:', teamMembers.length);
+                  
                   teamMembers.forEach(member => {
-                    const role = member.role || 'member';
-                    if (!groupedMembers[role]) {
-                      groupedMembers[role] = [];
+                    const role = member.role?.toLowerCase() || 'member';
+                    console.log('🔍 Member:', member.name, 'Role:', member.role, 'Normalized role:', role);
+                    
+                    if (role === 'owner') {
+                      console.log('  ✅ Adding to owners');
+                      owners.push(member);
+                    } else {
+                      console.log('  ✅ Adding to members');
+                      // All non-owners are considered members
+                      members.push(member);
                     }
-                    groupedMembers[role].push(member);
                   });
 
-                  // Define role order (Owner first, then others)
-                  const roleOrder = ['owner', 'manager', 'member'];
-                  const sortedRoles = Object.keys(groupedMembers).sort((a, b) => {
-                    const aIndex = roleOrder.indexOf(a.toLowerCase());
-                    const bIndex = roleOrder.indexOf(b.toLowerCase());
-                    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
-                    if (aIndex === -1) return 1;
-                    if (bIndex === -1) return -1;
-                    return aIndex - bIndex;
-                  });
+                  console.log('🔍 Final segregation - Owners:', owners.length, 'Members:', members.length);
 
-                  return sortedRoles.map(role => (
-                    <div key={role} className="member-role-group">
-                      <div className="member-role-label">
-                        {role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()}
-                      </div>
-                      {groupedMembers[role].map(member => (
-                        <div 
-                          key={member.id} 
-                          className="member-item"
-                          onContextMenu={(e) => handleMemberRightClick(e, member)}
-                        >
-                          <div className="member-avatar-container">
-                            <span className="member-avatar">{getRandomEmoji(member.id)}</span>
-                            <span className="member-status-indicator"></span>
+                  return (
+                    <>
+                      {/* Owner Section */}
+                      {owners.length > 0 && (
+                        <div className="member-role-group">
+                          <div className="member-role-label">
+                            Owner
                           </div>
-                          <div className="member-info">
-                            <span className="member-name">{member.name}</span>
-                            <span className="member-activity">{member.currentApp || 'sleeping'}</span>
-                          </div>
+                          {owners.map(member => (
+                            <div 
+                              key={member.id} 
+                              className="member-item"
+                              onContextMenu={(e) => handleMemberRightClick(e, member)}
+                            >
+                              <div className="member-avatar-container">
+                                <span className="member-avatar">{getRandomEmoji(member.id)}</span>
+                                <span className="member-status-indicator"></span>
+                              </div>
+                              <div className="member-info">
+                                <span className="member-name">{member.name}</span>
+                                <span className="member-activity">{member.currentApp || 'sleeping'}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  ));
+                      )}
+                      
+                      {/* Member Section */}
+                      {members.length > 0 && (
+                        <div className="member-role-group">
+                          <div className="member-role-label">
+                            Member
+                          </div>
+                          {members.map(member => (
+                            <div 
+                              key={member.id} 
+                              className="member-item"
+                              onContextMenu={(e) => handleMemberRightClick(e, member)}
+                            >
+                              <div className="member-avatar-container">
+                                <span className="member-avatar">{getRandomEmoji(member.id)}</span>
+                                <span className="member-status-indicator"></span>
+                              </div>
+                              <div className="member-info">
+                                <span className="member-name">{member.name}</span>
+                                <span className="member-activity">{member.currentApp || 'sleeping'}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
                 })()
               )}
             </div>
@@ -1236,6 +1603,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
       <AddTaskModal 
         isOpen={showAddTaskModal}
         onClose={() => setShowAddTaskModal(false)}
+        workspaceId={selectedTeam || undefined} // Pass the selected team/workspace ID
         onTaskAdded={() => {
           setShowAddTaskModal(false);
           // Reload tasks only

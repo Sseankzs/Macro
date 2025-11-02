@@ -691,7 +691,16 @@ static mut TRACKER: Option<CrossPlatformTracker> = None;
 
 pub fn init_tracker(db: Database) {
     unsafe {
+        // Validate database configuration before initializing tracker
+        if db.base_url.is_empty() {
+            log::error!("Cannot initialize tracker: Database base_url is empty");
+            log::error!("Please check your environment variables (SUPABASE_URL or VITE_SUPABASE_URL)");
+            return;
+        }
+        
+        log::info!("Initializing tracker with database URL: {}", db.base_url);
         TRACKER = Some(CrossPlatformTracker::new(db));
+        log::info!("Tracker initialized successfully");
     }
 }
 

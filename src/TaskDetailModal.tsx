@@ -6,7 +6,6 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  project_id: string;
   assignee_id?: string;
   status: 'Todo' | 'InProgress' | 'Done';
   priority: 'Low' | 'Medium' | 'High';
@@ -14,7 +13,6 @@ interface Task {
   created_at: string;
   updated_at: string;
   assignee_name?: string;
-  project_name?: string;
 }
 
 interface TaskDetailModalProps {
@@ -294,17 +292,12 @@ function TaskDetailModal({ isOpen, onClose, task, onTaskUpdated, clickPosition }
             )}
           </div>
 
-          {(task.assignee_name || task.project_name) && (
+          {task.assignee_name && (
             <div className="detail-section inline-group">
-              {task.assignee_name && (
-                <div className="assignee-info">
-                  <span className="assignee-avatar">👤</span>
-                  <span className="assignee-name">{task.assignee_name}</span>
-                </div>
-              )}
-              {task.project_name && (
-                <p className="section-content">📁 {task.project_name}</p>
-              )}
+              <div className="assignee-info">
+                <span className="assignee-avatar">👤</span>
+                <span className="assignee-name">{task.assignee_name}</span>
+              </div>
             </div>
           )}
 

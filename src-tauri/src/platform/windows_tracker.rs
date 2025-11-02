@@ -230,6 +230,11 @@ impl WindowsTracker {
     }
 
     pub async fn update_activity(&self) -> Result<(), String> {
+        // Validate database configuration first
+        if self.base.db.base_url.is_empty() {
+            return Err("Database not properly configured. Check your environment variables (SUPABASE_URL).".to_string());
+        }
+        
         let foreground_process = self.get_foreground_process().await?;
         
         let mut state = self.base.state.lock().await;

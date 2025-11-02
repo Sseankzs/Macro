@@ -9,8 +9,12 @@ pub struct DatabaseHelpers;
 impl DatabaseHelpers {
     /// Get all active time entries for the current user
     pub async fn get_active_time_entries(db: &Database) -> Result<Vec<TimeEntry>, String> {
+        if db.base_url.is_empty() {
+            return Err("Database base_url is empty. Check your environment variables (SUPABASE_URL or VITE_SUPABASE_URL)".to_string());
+        }
+        
         let user_id = get_current_user_id_or_error()?;
-        let url = format!("{}/rest/v1/time_entries?user_id=eq.{}&is_active=eq.true", 
+        let url = format!("{}/rest/v1/time_entries?user_id=eq.{}&end_time=is.null", 
                          db.base_url, user_id);
         let response = db.client
             .get(&url)
@@ -33,6 +37,10 @@ impl DatabaseHelpers {
 
     /// Start a new time entry for an application
     pub async fn start_time_entry(db: &Database, app: &Application) -> Result<String, String> {
+        if db.base_url.is_empty() {
+            return Err("Database base_url is empty. Check your environment variables (SUPABASE_URL or VITE_SUPABASE_URL)".to_string());
+        }
+        
         // First check if there's already an active time entry for this app
         let user_id = get_current_user_id_or_error()?;
         let existing_entry_url = format!("{}/rest/v1/time_entries?user_id=eq.{}&app_id=eq.{}&is_active=eq.true", 
@@ -88,6 +96,10 @@ impl DatabaseHelpers {
 
     /// End a time entry
     pub async fn end_time_entry(db: &Database, entry_id: String) -> Result<(), String> {
+        if db.base_url.is_empty() {
+            return Err("Database base_url is empty. Check your environment variables (SUPABASE_URL or VITE_SUPABASE_URL)".to_string());
+        }
+        
         // First, get the current time entry to access the start_time
         let get_url = format!("{}/rest/v1/time_entries?id=eq.{}", db.base_url, entry_id);
         let get_response = db.client
@@ -150,6 +162,15 @@ impl DatabaseHelpers {
         let user_id = get_current_user_id_or_error()?;
         let url = format!("{}/rest/v1/applications?user_id=eq.{}&is_tracked=eq.true", 
                          db.base_url, user_id);
+        
+        // Debug logging
+        log::info!("get_tracked_applications: base_url = '{}'", db.base_url);
+        log::info!("get_tracked_applications: constructed URL = '{}'", url);
+        
+        if db.base_url.is_empty() {
+            return Err("Database base_url is empty. Check your environment variables (SUPABASE_URL or VITE_SUPABASE_URL)".to_string());
+        }
+        
         let response = db.client
             .get(&url)
             .header("apikey", &db.api_key)

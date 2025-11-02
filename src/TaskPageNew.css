@@ -293,6 +293,45 @@
   gap: 6px;
 }
 
+/* Multiple assignees container */
+.task-assignees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* Individual assignee tag */
+.task-assignee-tag {
+  display: inline-flex;
+  align-items: center;
+  background: #007AFF;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  gap: 4px;
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-assignee-tag .assignee-avatar {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.task-assignee-tag .assignee-name {
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .assignee-avatar {
   font-size: 16px;
 }

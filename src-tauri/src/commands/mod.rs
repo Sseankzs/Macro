@@ -43,9 +43,11 @@ fn apply_membership_meta(user: &mut User, memberships: &[WorkspaceMemberRecord])
     if let Some(member) = memberships.first() {
         user.workspace_id = member.workspace_id.clone();
         user.team_id = member.workspace_id.clone();
+        user.role = member.role.clone(); // Set role from workspace_members
     } else {
         user.workspace_id = None;
         user.team_id = None;
+        user.role = None;
     }
 }
 
@@ -780,8 +782,8 @@ pub async fn get_all_projects(db: State<'_, Database>) -> Result<Vec<Project>, S
 pub async fn create_task(
     db: State<'_, Database>,
     title: String,
-    project_id: Option<String>,
-    assignee_id: Option<String>,
+    workspace_id: Option<String>,
+    assigned_user_ids: Option<Vec<String>>,
     description: Option<String>,
     status: Option<String>,
     priority: Option<String>,
@@ -803,8 +805,7 @@ pub async fn create_task(
         "id": generate_id(),
         "title": title,
         "description": description,
-        "project_id": project_id,
-        "assignee_id": assignee_id,
+        "workspace_id": workspace_id,
         "status": status.unwrap_or("todo".to_string()),
         "priority": priority,
         "due_date": due_date,
@@ -824,10 +825,132 @@ pub async fn create_task(
         .map_err(|e| format!("Failed to parse created task: {}", e))?;
     
     if let Some(created_task) = created_tasks.into_iter().next() {
+        // Create assignee records if users are assigned
+        if let Some(user_ids) = assigned_user_ids {
+            for user_id in user_ids {
+                let assignee_data = json!({
+                    "task_id": created_task.id,
+                    "user_id": user_id,
+                    "created_at": now().to_rfc3339()
+                });
+                
+                println!("create_task: Creating assignee with data: {}", assignee_data);
+                
+                let _assignee_response = db
+                    .execute_query("assignee", "POST", Some(assignee_data))
+                    .await
+                    .map_err(|e| {
+                        println!("Warning: Failed to create assignee: {}", e);
+                        // Don't fail the entire task creation if assignee creation fails
+                        e
+                    });
+            }
+        }
+        
         Ok(created_task)
     } else {
         Err("No task was created".to_string())
     }
+}
+
+#[tauri::command]
+pub async fn get_all_assignees(
+    db: State<'_, Database>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let url = format!("{}/rest/v1/assignee", db.base_url);
+    
+    println!("get_all_assignees: Fetching from URL: {}", url);
+    
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", &db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch assignees: {}", e))?;
+
+    println!("get_all_assignees: Response status: {}", response.status());
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Failed to fetch assignees: {} - {}", status, error_text));
+    }
+
+    let assignees: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse assignees: {}", e))?;
+
+    println!("get_all_assignees: Found {} assignee records", assignees.len());
+    
+    Ok(assignees)
+}
+
+#[tauri::command]
+pub async fn get_all_tasks(db: State<'_, Database>) -> Result<Vec<Task>, String> {
+    let url = format!("{}/rest/v1/tasks", db.base_url);
+    
+    println!("get_all_tasks: Fetching from URL: {}", url);
+    
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", &db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch tasks: {}", e))?;
+
+    println!("get_all_tasks: Response status: {}", response.status());
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Failed to fetch tasks: {} - {}", status, error_text));
+    }
+
+    let tasks: Vec<Task> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse tasks: {}", e))?;
+
+    println!("get_all_tasks: Found {} task records", tasks.len());
+    
+    Ok(tasks)
+}
+
+#[tauri::command]
+pub async fn get_task_assignees(task_id: String, db: State<'_, Database>) -> Result<Vec<serde_json::Value>, String> {
+    println!("get_task_assignees: Fetching assignees for task_id: {}", task_id);
+    
+    let url = format!("{}/rest/v1/assignee?task_id=eq.{}", db.base_url, task_id);
+    
+    println!("get_task_assignees: Fetching from URL: {}", url);
+    
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", &db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch task assignees: {}", e))?;
+
+    println!("get_task_assignees: Response status: {}", response.status());
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Failed to fetch task assignees: {} - {}", status, error_text));
+    }
+
+    let assignees: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse task assignees: {}", e))?;
+
+    println!("get_task_assignees: Found {} assignees for task {}", assignees.len(), task_id);
+    
+    Ok(assignees)
 }
 
 #[tauri::command]
@@ -845,6 +968,30 @@ pub async fn get_tasks_by_project(
         .map_err(|e| format!("Failed to fetch tasks: {}", e))?;
 
     let tasks: Vec<Task> = response.json().await.map_err(|e| format!("Failed to parse tasks: {}", e))?;
+    Ok(tasks)
+}
+
+#[tauri::command]
+pub async fn get_tasks_by_workspace(
+    db: State<'_, Database>,
+    workspace_id: String,
+) -> Result<Vec<Task>, String> {
+    let url = format!("{}/rest/v1/tasks?workspace_id=eq.{}", db.base_url, workspace_id);
+    println!("get_tasks_by_workspace: Getting tasks for workspace {} from URL: {}", workspace_id, url);
+    
+    let response = db.client
+        .get(&url)
+        .header("apikey", &db.api_key)
+        .header("Authorization", format!("Bearer {}", db.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch tasks: {}", e))?;
+
+    println!("get_tasks_by_workspace: Response status: {}", response.status());
+
+    let tasks: Vec<Task> = response.json().await.map_err(|e| format!("Failed to parse tasks: {}", e))?;
+    println!("get_tasks_by_workspace: Found {} tasks for workspace {}", tasks.len(), workspace_id);
+    
     Ok(tasks)
 }
 
@@ -1270,6 +1417,17 @@ pub async fn initialize_database_and_login(
             return Err(format!("Failed to load database configuration: {}", e));
         }
     };
+
+    // Validate configuration before creating database
+    if supabase_config.url.is_empty() {
+        return Err("Supabase URL is empty. Please check your environment variables (SUPABASE_URL or VITE_SUPABASE_URL).".to_string());
+    }
+    if supabase_config.anon_key.is_empty() {
+        return Err("Supabase API key is empty. Please check your environment variables (SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY).".to_string());
+    }
+    
+    log::info!("Database will be configured with URL: {}", supabase_config.url);
+    log::info!("Database will be configured with API key: {}...", &supabase_config.anon_key[..std::cmp::min(10, supabase_config.anon_key.len())]);
 
     // Initialize database
     let database = Database::new(supabase_config.url, supabase_config.anon_key)

@@ -9,17 +9,6 @@ const isTauri = () => {
   return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 }
 
-interface Team {
-  id: string;
-  team_name: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  team_id?: string;
-}
-
 interface TeamMember {
   id: string;
   name: string;
@@ -30,72 +19,61 @@ interface AddTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   onTaskAdded: () => void;
+  workspaceId?: string; // The selected workspace/team ID
 }
 
-function AddTaskModal({ isOpen, onClose, onTaskAdded }: AddTaskModalProps) {
+function AddTaskModal({ isOpen, onClose, onTaskAdded, workspaceId }: AddTaskModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [assignedUsers, setAssignedUsers] = useState<TeamMember[]>([]);
   
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     priority: 'Medium' as 'Low' | 'Medium' | 'High',
     dueDate: '',
-    projectId: '',
-    assigneeId: '',
     status: 'Todo' as 'Todo' | 'InProgress' | 'Done'
   });
 
-  // Load teams, projects, and members when modal opens
+  // Load team members when modal opens
   useEffect(() => {
-    if (isOpen) {
-      loadData();
+    if (isOpen && workspaceId) {
+      loadTeamMembers();
     }
-  }, [isOpen]);
+  }, [isOpen, workspaceId]);
 
-  const loadData = async () => {
+  const loadTeamMembers = async () => {
     try {
       if (isTauri()) {
-        const [teamsData, projectsData, membersData] = await Promise.all([
-          invoke('get_all_teams') as Promise<Team[]>,
-          invoke('get_all_projects') as Promise<Project[]>,
-          invoke('get_all_users') as Promise<TeamMember[]>
-        ]);
-
-        setTeams(teamsData);
-        setProjects(projectsData);
-        setTeamMembers(membersData);
-
-        // Set default project if available
-        if (projectsData.length > 0) {
-          setFormData(prev => ({ ...prev, projectId: projectsData[0].id }));
-        }
+        // Load all users and filter by workspace
+        const allUsers = await invoke('get_all_users') as TeamMember[];
+        const workspaceMembers = allUsers.filter(user => user.team_id === workspaceId);
+        setTeamMembers(workspaceMembers);
       } else {
         // Browser mode - use mock data
-        const mockTeams: Team[] = [
-          { id: 'team-1', team_name: 'Frontend Team' }
-        ];
-        const mockProjects: Project[] = [
-          { id: 'project-1', name: 'Frontend App', team_id: 'team-1' }
-        ];
         const mockMembers: TeamMember[] = [
-          { id: 'user-1', name: 'John Doe', team_id: 'team-1' },
-          { id: 'user-2', name: 'Jane Smith', team_id: 'team-1' }
+          { id: 'user-1', name: 'John Doe', team_id: workspaceId },
+          { id: 'user-2', name: 'Jane Smith', team_id: workspaceId },
+          { id: 'user-3', name: 'Bob Johnson', team_id: workspaceId }
         ];
-
-        setTeams(mockTeams);
-        setProjects(mockProjects);
         setTeamMembers(mockMembers);
-        setFormData(prev => ({ ...prev, projectId: 'project-1' }));
       }
     } catch (err) {
-      console.error('Failed to load data:', err);
-      setError('Failed to load team and project data.');
+      console.error('Failed to load team members:', err);
+      setError('Failed to load team members.');
     }
+  };
+
+  const handleUserSelection = (user: TeamMember) => {
+    if (!assignedUsers.find(assigned => assigned.id === user.id)) {
+      setAssignedUsers(prev => [...prev, user]);
+    }
+  };
+
+  const removeAssignedUser = (userId: string) => {
+    setAssignedUsers(prev => prev.filter(user => user.id !== userId));
   };
 
   const validateForm = () => {
@@ -121,9 +99,6 @@ function AddTaskModal({ isOpen, onClose, onTaskAdded }: AddTaskModalProps) {
       if (isTauri()) {
         console.log('Creating task with data:', formData);
         
-        // Create task in backend - project_id is now optional
-        const projectId = formData.projectId || null;
-        
         // Convert status to backend format
         const backendStatus = formData.status === 'Todo' ? 'todo' : 
                              formData.status === 'InProgress' ? 'in_progress' : 'done';
@@ -134,8 +109,8 @@ function AddTaskModal({ isOpen, onClose, onTaskAdded }: AddTaskModalProps) {
 
         const newTask = await invoke('create_task', {
           title: encTitle,
-          projectId: projectId, // Tauri will convert this to project_id
-          assigneeId: formData.assigneeId || null, // Tauri will convert this to assignee_id
+          workspaceId: workspaceId || null, // Use the selected workspace ID
+          assignedUserIds: assignedUsers.map(user => user.id), // Pass assigned user IDs
           description: encDescription,
           status: backendStatus,
           priority: formData.priority.toLowerCase(),
@@ -151,10 +126,9 @@ function AddTaskModal({ isOpen, onClose, onTaskAdded }: AddTaskModalProps) {
           description: '',
           priority: 'Medium',
           dueDate: '',
-          projectId: projects.length > 0 ? projects[0].id : '',
-          assigneeId: '',
           status: 'Todo'
         });
+        setAssignedUsers([]); // Clear assigned users
         
         // Notify parent component
         onTaskAdded();
@@ -182,10 +156,9 @@ function AddTaskModal({ isOpen, onClose, onTaskAdded }: AddTaskModalProps) {
       description: '',
       priority: 'Medium',
       dueDate: '',
-      projectId: projects.length > 0 ? projects[0].id : '',
-      assigneeId: '',
       status: 'Todo'
     });
+    setAssignedUsers([]); // Clear assigned users
     onClose();
   };
 
@@ -235,10 +208,54 @@ function AddTaskModal({ isOpen, onClose, onTaskAdded }: AddTaskModalProps) {
                 <option value="Medium">Medium</option>
                 <option value="High">High</option>
               </select>
-            </div>
+          </div>
 
-            <div className="form-group">
-              <label htmlFor="status">Status</label>
+          <div className="form-group">
+            <label htmlFor="assignedTo">Assigned To</label>
+            <div className="assignee-section">
+              <select
+                id="assignedTo"
+                onChange={(e) => {
+                  const selectedUser = teamMembers.find(member => member.id === e.target.value);
+                  if (selectedUser) {
+                    handleUserSelection(selectedUser);
+                    e.target.value = ''; // Reset select
+                  }
+                }}
+                value=""
+              >
+                <option value="">Select team member...</option>
+                {teamMembers
+                  .filter(member => !assignedUsers.find(assigned => assigned.id === member.id))
+                  .map(member => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+              </select>
+              
+              {assignedUsers.length > 0 && (
+                <div className="assigned-users">
+                  {assignedUsers.map(user => (
+                    <div key={user.id} className="assigned-user-tag">
+                      <span>{user.name}</span>
+                      <button
+                        type="button"
+                        className="remove-user-btn"
+                        onClick={() => removeAssignedUser(user.id)}
+                        title="Remove assignee"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="status">Status</label>
               <select
                 id="status"
                 value={formData.status}
@@ -249,38 +266,6 @@ function AddTaskModal({ isOpen, onClose, onTaskAdded }: AddTaskModalProps) {
                 <option value="Done">Done</option>
               </select>
             </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="project">Project</label>
-            <select
-              id="project"
-              value={formData.projectId}
-              onChange={(e) => setFormData(prev => ({ ...prev, projectId: e.target.value }))}
-            >
-              <option value="">Default Project</option>
-              {projects.map(project => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="assignee">Assignee</label>
-            <select
-              id="assignee"
-              value={formData.assigneeId}
-              onChange={(e) => setFormData(prev => ({ ...prev, assigneeId: e.target.value }))}
-            >
-              <option value="">Unassigned</option>
-              {teamMembers.map(member => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="form-group">

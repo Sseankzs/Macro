@@ -111,7 +111,11 @@ pub fn run() {
             // Task commands
             create_task,
             get_tasks_by_project,
+            get_tasks_by_workspace,
             get_tasks_by_assignee,
+            get_all_tasks,
+            get_all_assignees,
+            get_task_assignees,
             update_task,
             delete_task,
             // Application commands

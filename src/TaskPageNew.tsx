@@ -38,6 +38,8 @@ interface Task {
   // UI-specific fields
   assignee_name?: string;
   project_name?: string;
+  // Multi-assignee support
+  assignees?: TeamMember[];
 }
 
 // Team and Project interfaces for task assignment
@@ -68,6 +70,136 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+  // Load assignees for a specific task
+  const loadTaskAssignees = async (taskId: string): Promise<TeamMember[]> => {
+    try {
+      console.log('🔍 loadTaskAssignees (New): Loading assignees for task:', taskId);
+      
+      if (isTauri()) {
+        // Get all assignees from the backend
+        const allAssignees = await invoke<any[]>('get_all_assignees');
+        console.log('🔍 loadTaskAssignees (New): All assignees from backend:', allAssignees);
+        
+        // Filter assignees for this specific task
+        const taskAssignees = allAssignees.filter((assignee: any) => assignee.task_id === taskId);
+        console.log('🔍 loadTaskAssignees (New): Assignees for task', taskId, ':', taskAssignees);
+        
+        // Fetch user details for each assignee
+        const assigneesWithDetails: TeamMember[] = await Promise.all(
+          taskAssignees.map(async (assignee: any) => {
+            try {
+              const user = await invoke('get_user', { userId: assignee.user_id }) as any;
+              if (user) {
+                return {
+                  id: user.id,
+                  name: user.name,
+                  team_id: user.team_id || user.workspace_id,
+                  role: 'member', // Default role
+                  email: user.email
+                };
+              } else {
+                // Fallback if user not found
+                return {
+                  id: assignee.user_id,
+                  name: assignee.user_id,
+                  team_id: taskId, // Use task ID as fallback
+                  role: 'member'
+                };
+              }
+            } catch (userErr) {
+              console.warn('🔍 loadTaskAssignees (New): Failed to get user details for', assignee.user_id, ':', userErr);
+              // Return fallback user info
+              return {
+                id: assignee.user_id,
+                name: assignee.user_id,
+                team_id: taskId,
+                role: 'member'
+              };
+            }
+          })
+        );
+        
+        console.log('🔍 loadTaskAssignees (New): Final assignees with details:', assigneesWithDetails);
+        return assigneesWithDetails;
+      }
+      
+      return [];
+    } catch (err) {
+      console.error('❌ Failed to load task assignees (New):', err);
+      return [];
+    }
+  };
+
+  // Load assignees for all tasks at once (optimized version)
+  const loadAllTaskAssignees = async (tasks: Task[]) => {
+    try {
+      console.log('🔍 loadAllTaskAssignees (New): Loading assignees for all tasks...');
+      
+      if (isTauri()) {
+        // Get all assignees from the backend once
+        const allAssignees = await invoke<any[]>('get_all_assignees');
+        console.log('🔍 loadAllTaskAssignees (New): All assignees from backend:', allAssignees);
+        
+        // Group assignees by task_id for efficient lookup
+        const assigneesByTaskId: Record<string, any[]> = {};
+        allAssignees.forEach((assignee: any) => {
+          if (!assigneesByTaskId[assignee.task_id]) {
+            assigneesByTaskId[assignee.task_id] = [];
+          }
+          assigneesByTaskId[assignee.task_id].push(assignee);
+        });
+        
+        // For each task, populate its assignees
+        for (const task of tasks) {
+          const taskAssignees = assigneesByTaskId[task.id] || [];
+          console.log('🔍 loadAllTaskAssignees (New): Assignees for task', task.id, ':', taskAssignees);
+          
+          // Fetch user details for each assignee of this task
+          const assigneesWithDetails: TeamMember[] = await Promise.all(
+            taskAssignees.map(async (assignee: any) => {
+              try {
+                const user = await invoke('get_user', { userId: assignee.user_id }) as any;
+                if (user) {
+                  return {
+                    id: user.id,
+                    name: user.name,
+                    team_id: user.team_id || user.workspace_id
+                  };
+                } else {
+                  // Fallback if user not found
+                  return {
+                    id: assignee.user_id,
+                    name: assignee.user_id,
+                    team_id: task.id
+                  };
+                }
+              } catch (userErr) {
+                console.warn('🔍 loadAllTaskAssignees (New): Failed to get user details for', assignee.user_id, ':', userErr);
+                // Return fallback user info
+                return {
+                  id: assignee.user_id,
+                  name: assignee.user_id,
+                  team_id: task.id
+                };
+              }
+            })
+          );
+          
+          // Update the task with assignees
+          task.assignees = assigneesWithDetails;
+        }
+        
+        console.log('🔍 loadAllTaskAssignees (New): All tasks updated with assignees');
+      }
+    } catch (err) {
+      console.error('❌ Failed to load all task assignees (New):', err);
+      // Set empty assignees for all tasks on error
+      tasks.forEach(task => {
+        task.assignees = [];
+      });
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -98,8 +230,8 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
 
         console.log('Loaded data:', { backendTasks, backendTeams, backendProjects, backendMembers });
 
-        // Transform tasks with proper assignee and project names
-        const transformedTasks: Task[] = backendTasks.map(task => {
+        // Transform tasks with proper assignee and project names - without assignees first
+        const transformedTasks: Task[] = await Promise.all(backendTasks.map(async (task) => {
           const assignee = backendMembers.find(member => member.id === task.assignee_id);
           const project = backendProjects.find(proj => proj.id === task.project_id);
           
@@ -115,9 +247,14 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             created_at: task.created_at,
             updated_at: task.updated_at,
             assignee_name: assignee?.name,
-            project_name: project?.name
+            project_name: project?.name,
+            assignees: [] // Will be populated later
           };
-        });
+        }));
+
+        // Now load all assignees once at the end
+        console.log('🔍 Loading all assignees for tasks (New page)...');
+        await loadAllTaskAssignees(transformedTasks);
 
         setTasks(transformedTasks);
         setTeams(backendTeams);
@@ -335,10 +472,24 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         )}
         
         <div className="task-meta">
-          {task.assignee_name && (
+          {task.assignees && task.assignees.length > 0 ? (
+            <div className="task-assignees">
+              {task.assignees.map((assignee) => (
+                <div key={assignee.id} className="task-assignee-tag">
+                  <span className="assignee-avatar">👤</span>
+                  <span className="assignee-name">{assignee.name}</span>
+                </div>
+              ))}
+            </div>
+          ) : task.assignee_name ? (
             <div className="task-assignee">
               <span className="assignee-avatar">👤</span>
               <span className="assignee-name">{task.assignee_name}</span>
+            </div>
+          ) : (
+            <div className="task-assignee">
+              <span className="assignee-avatar">👤</span>
+              <span className="assignee-name">-</span>
             </div>
           )}
           

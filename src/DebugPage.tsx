@@ -31,6 +31,7 @@ interface WorkspaceRecord {
   description?: string | null;
   member_count?: number;
   created_by_name?: string | null;
+  members?: { id: string; name: string; email?: string }[];
 }
 
 interface BackendWorkspace {
@@ -51,6 +52,27 @@ interface WorkspaceMemberRow {
   joined_at?: string | null;
 }
 
+interface AssigneeRecord {
+  id: number;
+  created_at?: string | null;
+  task_id?: string | null;
+  user_id?: string | null;
+}
+
+interface TaskRecord {
+  id: string;
+  title: string;
+  description?: string | null;
+  project_id?: string | null;
+  workspace_id?: string | null;
+  assignee_id?: string | null;
+  status: 'todo' | 'in_progress' | 'done';
+  priority?: 'low' | 'medium' | 'high' | null;
+  due_date?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 
 function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
@@ -65,6 +87,23 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMemberRow[]>([]);
   const [membersLoading, setMembersLoading] = useState<boolean>(false);
   const [membersError, setMembersError] = useState<string | null>(null);
+  const [assignees, setAssignees] = useState<AssigneeRecord[]>([]);
+  const [assigneesLoading, setAssigneesLoading] = useState<boolean>(false);
+  const [assigneesError, setAssigneesError] = useState<string | null>(null);
+  
+  // Task-specific assignees
+  const [taskId, setTaskId] = useState<string>('');
+  const [taskAssignees, setTaskAssignees] = useState<AssigneeRecord[]>([]);
+  const [taskAssigneesLoading, setTaskAssigneesLoading] = useState<boolean>(false);
+  const [taskAssigneesError, setTaskAssigneesError] = useState<string | null>(null);
+  
+  // All tasks
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [tasksLoading, setTasksLoading] = useState<boolean>(false);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+  
+  // Task assignees mapping - maps task ID to array of assignee user info
+  const [taskAssigneesMap, setTaskAssigneesMap] = useState<Record<string, { id: string; name: string; email?: string }[]>>({});
 
   const fetchWorkspaceMembers = async () => {
     try {
@@ -148,6 +187,319 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
     }
   };
 
+  const fetchAssignees = async () => {
+    try {
+      setAssigneesLoading(true);
+      setAssigneesError(null);
+
+      if (isTauri()) {
+        const assigneeData = await invoke<AssigneeRecord[]>('get_all_assignees');
+        console.log('✅ Assignees loaded:', assigneeData);
+        setAssignees(assigneeData ?? []);
+        return;
+      }
+
+      if (!BYPASS_LOGIN) {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        const userId = sessionData?.session?.user?.id;
+
+        if (!userId) {
+          setAssignees([]);
+          return;
+        }
+
+        const { data: assignees, error: assigneesError } = await supabase
+          .from('assignee')
+          .select('id, created_at, task_id, user_id');
+        
+        if (assigneesError) throw assigneesError;
+        setAssignees(assignees ?? []);
+        return;
+      }
+
+      // Mock data for bypass mode
+      setAssignees([
+        {
+          id: 1,
+          task_id: 'mock-task-1',
+          user_id: 'mock-user-1',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 2,
+          task_id: 'mock-task-1',
+          user_id: 'mock-user-2',
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } catch (err) {
+      console.error('Failed to fetch assignees:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setAssigneesError(message);
+      setAssignees([]);
+    } finally {
+      setAssigneesLoading(false);
+    }
+  };
+
+  const fetchTaskAssignees = async (targetTaskId: string) => {
+    if (!targetTaskId.trim()) {
+      setTaskAssigneesError('Please enter a task ID');
+      return;
+    }
+
+    try {
+      setTaskAssigneesLoading(true);
+      setTaskAssigneesError(null);
+
+      if (isTauri()) {
+        const assigneeData = await invoke<AssigneeRecord[]>('get_task_assignees', { taskId: targetTaskId });
+        console.log('✅ Task assignees loaded:', assigneeData);
+        setTaskAssignees(assigneeData ?? []);
+        return;
+      }
+
+      if (!BYPASS_LOGIN) {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        const userId = sessionData?.session?.user?.id;
+
+        if (!userId) {
+          setTaskAssignees([]);
+          return;
+        }
+
+        const { data: assignees, error: assigneesError } = await supabase
+          .from('assignee')
+          .select('id, created_at, task_id, user_id')
+          .eq('task_id', targetTaskId);
+        
+        if (assigneesError) throw assigneesError;
+        setTaskAssignees(assignees ?? []);
+        return;
+      }
+
+      // Mock data for bypass mode
+      if (targetTaskId === 'mock-task-1') {
+        setTaskAssignees([
+          {
+            id: 1,
+            task_id: targetTaskId,
+            user_id: 'mock-user-1',
+            created_at: new Date().toISOString(),
+          },
+          {
+            id: 2,
+            task_id: targetTaskId,
+            user_id: 'mock-user-2',
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        setTaskAssignees([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch task assignees:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setTaskAssigneesError(message);
+      setTaskAssignees([]);
+    } finally {
+      setTaskAssigneesLoading(false);
+    }
+  };
+
+  const fetchTasks = async () => {
+    try {
+      setTasksLoading(true);
+      setTasksError(null);
+
+      if (isTauri()) {
+        const taskData = await invoke<TaskRecord[]>('get_all_tasks');
+        console.log('✅ Tasks loaded:', taskData);
+        setTasks(taskData ?? []);
+        return;
+      }
+
+      if (!BYPASS_LOGIN) {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        const userId = sessionData?.session?.user?.id;
+
+        if (!userId) {
+          setTasks([]);
+          return;
+        }
+
+        const { data: tasks, error: tasksError } = await supabase
+          .from('tasks')
+          .select('*');
+        
+        if (tasksError) throw tasksError;
+        setTasks(tasks ?? []);
+        return;
+      }
+
+      // Mock data for bypass mode
+      setTasks([
+        {
+          id: 'mock-task-1',
+          title: 'Sample Task 1',
+          description: 'This is a sample task for testing',
+          workspace_id: 'mock-workspace-1',
+          status: 'todo',
+          priority: 'high',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'mock-task-2',
+          title: 'Sample Task 2',
+          description: 'Another sample task',
+          workspace_id: 'mock-workspace-1',
+          status: 'in_progress',
+          priority: 'medium',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'mock-task-3',
+          title: 'Completed Task',
+          description: 'A finished task',
+          workspace_id: 'mock-workspace-1',
+          status: 'done',
+          priority: 'low',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setTasksError(message);
+      setTasks([]);
+    } finally {
+      setTasksLoading(false);
+    }
+    
+    // After loading tasks, fetch the assignees mapping
+    console.log('🔍 fetchTasks: About to call fetchAllTaskAssignees...');
+    await fetchAllTaskAssignees();
+    console.log('🔍 fetchTasks: fetchAllTaskAssignees completed');
+  };
+
+  // Function to fetch assignees for all tasks and create a mapping
+  const fetchAllTaskAssignees = async () => {
+    try {
+      console.log('🔍 fetchAllTaskAssignees: Starting to fetch assignees...');
+      // Always fetch fresh assignee data instead of using cached
+      const assigneesData = await (async () => {
+        if (isTauri()) {
+          console.log('🔍 fetchAllTaskAssignees: Using Tauri mode');
+          const result = await invoke<any[]>('get_all_assignees');
+          console.log('🔍 fetchAllTaskAssignees: Tauri result:', result);
+          // Convert the serde_json::Value objects to our expected format
+          const convertedResult = result.map((item: any) => ({
+            id: item.id,
+            task_id: item.task_id,
+            user_id: item.user_id,
+            created_at: item.created_at
+          }));
+          console.log('🔍 fetchAllTaskAssignees: Converted result:', convertedResult);
+          return convertedResult;
+        }
+        
+        if (!BYPASS_LOGIN) {
+          console.log('🔍 fetchAllTaskAssignees: Using Supabase mode');
+          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+          if (sessionError) throw sessionError;
+          const userId = sessionData?.session?.user?.id;
+          if (!userId) return [];
+
+          const { data: assignees, error: assigneesError } = await supabase
+            .from('assignee')
+            .select('id, created_at, task_id, user_id');
+          
+          if (assigneesError) throw assigneesError;
+          console.log('🔍 fetchAllTaskAssignees: Supabase result:', assignees);
+          return assignees ?? [];
+        }
+
+        // Mock data for bypass mode
+        console.log('🔍 fetchAllTaskAssignees: Using mock mode');
+        const mockData = [
+          { id: 1, task_id: 'mock-task-1', user_id: 'mock-user-1', created_at: new Date().toISOString() },
+          { id: 2, task_id: 'mock-task-1', user_id: 'mock-user-2', created_at: new Date().toISOString() },
+          { id: 3, task_id: 'mock-task-2', user_id: 'mock-user-1', created_at: new Date().toISOString() },
+        ];
+        console.log('🔍 fetchAllTaskAssignees: Mock result:', mockData);
+        return mockData;
+      })();
+
+      console.log('🔍 fetchAllTaskAssignees: Final assignees data:', assigneesData);
+
+      // Group assignees by task_id and fetch user details
+      const taskAssigneeGroups: Record<string, { id: string; name: string; email?: string }[]> = {};
+      
+      for (const assignee of assigneesData) {
+        if (!assignee.task_id || !assignee.user_id) {
+          console.log('🔍 fetchAllTaskAssignees: Skipping assignee with missing data:', assignee);
+          continue;
+        }
+        
+        if (!taskAssigneeGroups[assignee.task_id]) {
+          taskAssigneeGroups[assignee.task_id] = [];
+        }
+
+        // Get user details for this assignee
+        let userName = assignee.user_id;
+        let userEmail: string | undefined;
+
+        try {
+          if (isTauri()) {
+            const user = await invoke('get_user', { userId: assignee.user_id }) as DebugUser | null;
+            if (user) {
+              userName = user.name;
+              userEmail = user.email || undefined;
+            }
+            console.log('🔍 fetchAllTaskAssignees: User details for', assignee.user_id, ':', { userName, userEmail });
+          } else if (!BYPASS_LOGIN) {
+            // For Supabase mode, we'd need to fetch from users table
+            const { data: userData, error: userError } = await supabase
+              .from('users')
+              .select('id, name, email')
+              .eq('id', assignee.user_id)
+              .single();
+            
+            if (!userError && userData) {
+              userName = userData.name || assignee.user_id;
+              userEmail = userData.email || undefined;
+            }
+          } else {
+            // Mock mode - provide mock names
+            userName = assignee.user_id === 'mock-user-1' ? 'John Doe' : 
+                     assignee.user_id === 'mock-user-2' ? 'Jane Smith' : assignee.user_id;
+            userEmail = assignee.user_id === 'mock-user-1' ? 'john@example.com' : 
+                       assignee.user_id === 'mock-user-2' ? 'jane@example.com' : undefined;
+          }
+        } catch (userErr) {
+          console.warn(`🔍 fetchAllTaskAssignees: Failed to get user details for ${assignee.user_id}:`, userErr);
+        }
+
+        taskAssigneeGroups[assignee.task_id].push({
+          id: assignee.user_id,
+          name: userName,
+          email: userEmail,
+        });
+      }
+
+      console.log('🔍 fetchAllTaskAssignees: Final task assignee groups:', taskAssigneeGroups);
+      setTaskAssigneesMap(taskAssigneeGroups);
+    } catch (err) {
+      console.error('🔍 fetchAllTaskAssignees: Error occurred:', err);
+    }
+  };
+
   const fetchWorkspaces = async () => {
     try {
       setWorkspaceLoading(true);
@@ -168,41 +520,66 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
   const workspaceIdSet = new Set(workspaceIds);
         const memberCounts: Record<string, number> = {};
         const creatorNames: Record<string, string | null> = {};
+        const workspaceMembers: Record<string, { id: string; name: string; email?: string }[]> = {};
 
         if (workspaceIds.length > 0) {
+          // Get users first to have user data available
+          let userMap = new Map<string, { name: string; email?: string }>();
+          try {
+            const users = await invoke<DebugUser[]>('get_all_users');
+            (users ?? []).forEach((user) => {
+              if (user?.id) {
+                userMap.set(user.id, { 
+                  name: user.name ?? user.email ?? 'Unknown user',
+                  email: user.email ?? undefined
+                });
+              }
+            });
+          } catch (userErr) {
+            console.warn('Failed to load users via Tauri command:', userErr);
+          }
+
           try {
             const memberships = await invoke<WorkspaceMemberRow[]>('get_all_workspace_members');
             (memberships ?? []).forEach((row) => {
               const workspaceId = row.workspace_id ?? undefined;
-              if (!workspaceId || !workspaceIdSet.has(workspaceId)) return;
+              const userId = row.user_id ?? undefined;
+              if (!workspaceId || !workspaceIdSet.has(workspaceId) || !userId) return;
+              
+              // Count members
               memberCounts[workspaceId] = (memberCounts[workspaceId] ?? 0) + 1;
+              
+              // Add member to workspace members list
+              if (!workspaceMembers[workspaceId]) {
+                workspaceMembers[workspaceId] = [];
+              }
+              const userData = userMap.get(userId);
+              if (userData) {
+                workspaceMembers[workspaceId].push({
+                  id: userId,
+                  name: userData.name,
+                  email: userData.email
+                });
+              }
             });
           } catch (membershipErr) {
             console.warn('Failed to load workspace member counts via Tauri command:', membershipErr);
           }
 
-          try {
-            const users = await invoke<DebugUser[]>('get_all_users');
-            const userMap = new Map<string, string>();
-            (users ?? []).forEach((user) => {
-              if (user?.id) {
-                userMap.set(user.id, user.name ?? user.email ?? 'Unknown user');
-              }
-            });
-            workspaceRows.forEach((workspace) => {
-              if (workspace.created_by) {
-                creatorNames[workspace.id] = userMap.get(workspace.created_by) ?? 'Unknown user';
-              }
-            });
-          } catch (creatorErr) {
-            console.warn('Failed to load creator names via Tauri command:', creatorErr);
-          }
+          // Set creator names
+          workspaceRows.forEach((workspace) => {
+            if (workspace.created_by) {
+              const userData = userMap.get(workspace.created_by);
+              creatorNames[workspace.id] = userData?.name ?? 'Unknown user';
+            }
+          });
         }
 
         const mapped: WorkspaceRecord[] = workspaceRows.map((workspace) => ({
           ...workspace,
           member_count: memberCounts[workspace.id] ?? 0,
           created_by_name: workspace.created_by ? creatorNames[workspace.id] ?? null : null,
+          members: workspaceMembers[workspace.id] ?? [],
         }));
         setWorkspaces(mapped);
         return;
@@ -286,20 +663,58 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
         const workspaceIds = workspaceRows.map((w) => w.id);
 
         if (workspaceIds.length > 0) {
+          // Get all users first to have user data available
+          let userMap = new Map<string, { name: string; email?: string }>();
+          try {
+            const { data: users, error: userError } = await supabase
+              .from('users')
+              .select('id, name, email');
+            if (userError) throw userError;
+            (users ?? []).forEach((user: any) => {
+              if (user?.id) {
+                userMap.set(user.id, {
+                  name: user.name ?? user.email ?? 'Unknown user',
+                  email: user.email ?? undefined
+                });
+              }
+            });
+          } catch (userErr) {
+            console.warn('Failed to load users via Supabase:', userErr);
+          }
+
+          // Get member counts and member lists
+          const workspaceMembers: Record<string, { id: string; name: string; email?: string }[]> = {};
           try {
             const { data: membershipData, error: membershipError } = await supabase
               .from('workspace_members')
-              .select('workspace_id')
+              .select('workspace_id, user_id')
               .in('workspace_id', workspaceIds);
             if (membershipError) throw membershipError;
             const counts = new Map<string, number>();
             (membershipData ?? []).forEach((row: any) => {
               const workspaceId = row?.workspace_id;
-              if (!workspaceId) return;
+              const userId = row?.user_id;
+              if (!workspaceId || !userId) return;
+              
+              // Count members
               counts.set(workspaceId, (counts.get(workspaceId) ?? 0) + 1);
+              
+              // Add member to workspace members list
+              if (!workspaceMembers[workspaceId]) {
+                workspaceMembers[workspaceId] = [];
+              }
+              const userData = userMap.get(userId);
+              if (userData) {
+                workspaceMembers[workspaceId].push({
+                  id: userId,
+                  name: userData.name,
+                  email: userData.email
+                });
+              }
             });
             workspaceRows.forEach((row) => {
               row.member_count = counts.get(row.id) ?? 0;
+              (row as any).members = workspaceMembers[row.id] ?? [];
             });
           } catch (membershipErr) {
             console.warn('Failed to load workspace member counts via Supabase:', membershipErr);
@@ -310,18 +725,10 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
               .map((row) => row.created_by)
               .filter((id): id is string => Boolean(id));
             if (creatorIds.length > 0) {
-              const { data: creators, error: creatorError } = await supabase
-                .from('users')
-                .select('id, name, email')
-                .in('id', creatorIds);
-              if (creatorError) throw creatorError;
-              const creatorMap = new Map<string, string>();
-              (creators ?? []).forEach((user: any) => {
-                creatorMap.set(user.id, user.name ?? user.email ?? 'Unknown user');
-              });
               workspaceRows.forEach((row) => {
                 if (row.created_by) {
-                  row.created_by_name = creatorMap.get(row.created_by) ?? 'Unknown user';
+                  const userData = userMap.get(row.created_by);
+                  row.created_by_name = userData?.name ?? 'Unknown user';
                 }
               });
             }
@@ -342,8 +749,13 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
           updated_at: new Date().toISOString(),
           created_by: 'mock-user-1',
           description: 'Static workspace for debug mode',
-          member_count: 1,
+          member_count: 3,
           created_by_name: 'Dev User',
+          members: [
+            { id: 'mock-user-1', name: 'Dev User', email: 'dev@example.com' },
+            { id: 'mock-user-2', name: 'Test User', email: 'test@example.com' },
+            { id: 'mock-user-3', name: 'Demo User' }
+          ]
         },
       ]);
     } catch (err) {
@@ -519,6 +931,8 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
     fetchUsers();
     fetchCurrentUser();
     fetchWorkspaces();
+    fetchAssignees();
+    fetchTasks();
   }, []);
 
   // Fetch workspace members after workspaces are loaded
@@ -626,6 +1040,7 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
                     <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
                       <th style={{ padding: '12px 16px', fontWeight: 600 }}>Name</th>
                       <th style={{ padding: '12px 16px', fontWeight: 600 }}>Members</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Member Tags</th>
                       <th style={{ padding: '12px 16px', fontWeight: 600 }}>Created</th>
                       <th style={{ padding: '12px 16px', fontWeight: 600 }}>Updated</th>
                       <th style={{ padding: '12px 16px', fontWeight: 600 }}>Created By</th>
@@ -638,6 +1053,35 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
                       <tr key={workspace.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                         <td style={{ padding: '12px 16px' }}>{workspace.name || '—'}</td>
                         <td style={{ padding: '12px 16px' }}>{workspace.member_count ?? 0}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          {workspace.members && workspace.members.length > 0 ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {workspace.members.map((member) => (
+                                <span
+                                  key={member.id}
+                                  style={{
+                                    display: 'inline-block',
+                                    background: '#007AFF',
+                                    color: 'white',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: 500,
+                                    whiteSpace: 'nowrap',
+                                    maxWidth: '120px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}
+                                  title={member.email ? `${member.name} (${member.email})` : member.name}
+                                >
+                                  {member.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ color: '#6b7280', fontStyle: 'italic' }}>No members</span>
+                          )}
+                        </td>
                         <td style={{ padding: '12px 16px' }}>{workspace.created_at ? new Date(workspace.created_at).toLocaleString() : '—'}</td>
                         <td style={{ padding: '12px 16px' }}>{workspace.updated_at ? new Date(workspace.updated_at).toLocaleString() : '—'}</td>
                         <td style={{ padding: '12px 16px', color: workspace.created_by ? '#2563eb' : undefined }}>{workspace.created_by || '—'}</td>
@@ -758,6 +1202,279 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
                         <td style={{ padding: '12px 16px', color: user.image_url ? '#2563eb' : undefined }}>{user.image_url || '—'}</td>
                         <td style={{ padding: '12px 16px', textTransform: 'capitalize' }}>{user.membership_role || '—'}</td>
                         <td style={{ padding: '12px 16px' }}>{user.workspace_id || user.team_id || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section style={{ background: '#fff', borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: '0 8px 30px rgba(15, 23, 42, 0.08)' }}>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Task Assignees</h2>
+                <p style={{ margin: '4px 0 0', color: '#6b7280' }}>Live snapshot of task assignments from Supabase.</p>
+              </div>
+              <button className="btn-text" onClick={fetchAssignees} disabled={assigneesLoading} style={{ minWidth: 90 }}>
+                {assigneesLoading ? 'Loading...' : 'Reload'}
+              </button>
+            </header>
+
+            {assigneesError && (
+              <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>
+                Failed to load assignees: {assigneesError}
+              </div>
+            )}
+
+            {assignees.length === 0 && !assigneesLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
+                No task assignees found.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>ID</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Task ID</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>User ID</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Created At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assignees.map((assignee) => (
+                      <tr key={assignee.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '12px 16px' }}>{assignee.id}</td>
+                        <td style={{ padding: '12px 16px', color: '#2563eb', fontFamily: 'monospace', fontSize: '12px' }}>{assignee.task_id || '—'}</td>
+                        <td style={{ padding: '12px 16px', color: '#2563eb', fontFamily: 'monospace', fontSize: '12px' }}>{assignee.user_id || '—'}</td>
+                        <td style={{ padding: '12px 16px' }}>{assignee.created_at ? new Date(assignee.created_at).toLocaleString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section style={{ background: '#fff', borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: '0 8px 30px rgba(15, 23, 42, 0.08)' }}>
+            <header style={{ marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Assignees by Task</h2>
+                <p style={{ margin: '4px 0 0', color: '#6b7280' }}>Query assignees for a specific task ID.</p>
+              </div>
+            </header>
+
+            <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'end' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '14px' }}>
+                  Task ID
+                </label>
+                <input
+                  type="text"
+                  value={taskId}
+                  onChange={(e) => setTaskId(e.target.value)}
+                  placeholder="Enter task ID (e.g., uuid or mock-task-1)"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 8,
+                    fontSize: '14px',
+                    fontFamily: 'monospace'
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      fetchTaskAssignees(taskId);
+                    }
+                  }}
+                />
+              </div>
+              <button 
+                className="btn-text" 
+                onClick={() => fetchTaskAssignees(taskId)} 
+                disabled={taskAssigneesLoading || !taskId.trim()}
+                style={{ minWidth: 100, padding: '8px 16px' }}
+              >
+                {taskAssigneesLoading ? 'Loading...' : 'Query'}
+              </button>
+            </div>
+
+            {taskAssigneesError && (
+              <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>
+                {taskAssigneesError}
+              </div>
+            )}
+
+            {taskId && (
+              <>
+                {taskAssignees.length === 0 && !taskAssigneesLoading && !taskAssigneesError ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
+                    No assignees found for task: <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4 }}>{taskId}</code>
+                  </div>
+                ) : (
+                  taskAssignees.length > 0 && (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+                        <thead>
+                          <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
+                            <th style={{ padding: '12px 16px', fontWeight: 600 }}>ID</th>
+                            <th style={{ padding: '12px 16px', fontWeight: 600 }}>Task ID</th>
+                            <th style={{ padding: '12px 16px', fontWeight: 600 }}>User ID</th>
+                            <th style={{ padding: '12px 16px', fontWeight: 600 }}>Created At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {taskAssignees.map((assignee) => (
+                            <tr key={assignee.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                              <td style={{ padding: '12px 16px' }}>{assignee.id}</td>
+                              <td style={{ padding: '12px 16px', color: '#2563eb', fontFamily: 'monospace', fontSize: '12px' }}>{assignee.task_id || '—'}</td>
+                              <td style={{ padding: '12px 16px', color: '#2563eb', fontFamily: 'monospace', fontSize: '12px' }}>{assignee.user_id || '—'}</td>
+                              <td style={{ padding: '12px 16px' }}>{assignee.created_at ? new Date(assignee.created_at).toLocaleString() : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+              </>
+            )}
+          </section>
+
+          <section style={{ background: '#fff', borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: '0 8px 30px rgba(15, 23, 42, 0.08)' }}>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0 }}>All Tasks</h2>
+                <p style={{ margin: '4px 0 0', color: '#6b7280' }}>Complete list of tasks from the database.</p>
+                <div style={{ margin: '8px 0 0', fontSize: '12px', color: '#6b7280' }}>
+                  Debug: {Object.keys(taskAssigneesMap).length} tasks with assignees, {Object.values(taskAssigneesMap).flat().length} total assignees
+                </div>
+              </div>
+              <button className="btn-text" onClick={fetchTasks} disabled={tasksLoading} style={{ minWidth: 90 }}>
+                {tasksLoading ? 'Loading...' : 'Reload'}
+              </button>
+              <button className="btn-text" onClick={fetchAllTaskAssignees} style={{ minWidth: 120, marginLeft: 8 }}>
+                Debug Assignees
+              </button>
+            </header>
+
+            {tasksError && (
+              <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>
+                Failed to load tasks: {tasksError}
+              </div>
+            )}
+
+            {tasks.length === 0 && !tasksLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
+                No tasks found.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                {(() => {
+                  console.log('🔍 Current taskAssigneesMap when rendering table:', taskAssigneesMap);
+                  console.log('🔍 Current tasks when rendering table:', tasks.map(t => ({ id: t.id, title: t.title })));
+                  return null;
+                })()}
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>ID</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Title</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Status</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Priority</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Assignees</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Workspace ID</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Project ID</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Assignee ID</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Due Date</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Created</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Updated</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasks.map((task) => (
+                      <tr key={task.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '12px 16px', color: '#2563eb', fontFamily: 'monospace', fontSize: '12px' }}>{task.id}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 500 }}>{task.title}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            backgroundColor: 
+                              task.status === 'done' ? '#dcfce7' :
+                              task.status === 'in_progress' ? '#fef3c7' : '#f3f4f6',
+                            color:
+                              task.status === 'done' ? '#166534' :
+                              task.status === 'in_progress' ? '#92400e' : '#6b7280'
+                          }}>
+                            {task.status === 'in_progress' ? 'In Progress' : 
+                             task.status === 'done' ? 'Done' : 'Todo'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          {task.priority ? (
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontSize: '11px',
+                              fontWeight: 500,
+                              backgroundColor: 
+                                task.priority === 'high' ? '#fecaca' :
+                                task.priority === 'medium' ? '#fed7aa' : '#d1fae5',
+                              color:
+                                task.priority === 'high' ? '#991b1b' :
+                                task.priority === 'medium' ? '#9a3412' : '#065f46'
+                            }}>
+                              {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          {(() => {
+                            const assigneesForTask = taskAssigneesMap[task.id];
+                            console.log(`🔍 Rendering assignees for task ${task.id}:`, assigneesForTask);
+                            
+                            if (assigneesForTask && assigneesForTask.length > 0) {
+                              return (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                  {assigneesForTask.map((assignee, index) => (
+                                    <span
+                                      key={`${task.id}-${assignee.id}-${index}`}
+                                      style={{
+                                        display: 'inline-block',
+                                        padding: '2px 8px',
+                                        borderRadius: '12px',
+                                        fontSize: '11px',
+                                        fontWeight: 500,
+                                        backgroundColor: '#dbeafe',
+                                        color: '#1e40af',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                      title={assignee.email || assignee.name}
+                                    >
+                                      {assignee.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            } else {
+                              return '—';
+                            }
+                          })()}
+                        </td>
+                        <td style={{ padding: '12px 16px', color: '#2563eb', fontFamily: 'monospace', fontSize: '12px' }}>{task.workspace_id || '—'}</td>
+                        <td style={{ padding: '12px 16px', color: '#2563eb', fontFamily: 'monospace', fontSize: '12px' }}>{task.project_id || '—'}</td>
+                        <td style={{ padding: '12px 16px', color: '#2563eb', fontFamily: 'monospace', fontSize: '12px' }}>{task.assignee_id || '—'}</td>
+                        <td style={{ padding: '12px 16px' }}>{task.due_date ? new Date(task.due_date).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '12px 16px' }}>{task.created_at ? new Date(task.created_at).toLocaleString() : '—'}</td>
+                        <td style={{ padding: '12px 16px' }}>{task.updated_at ? new Date(task.updated_at).toLocaleString() : '—'}</td>
+                        <td style={{ padding: '12px 16px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.description || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
