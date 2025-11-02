@@ -6,14 +6,26 @@ interface AddTeamPopupProps {
   onClose: () => void;
   onSubmit: (teamData: { name: string; description?: string }) => Promise<void>;
   anchorElement?: HTMLElement | null;
+  initialData?: { name: string; description?: string };
 }
 
-const AddTeamPopup: React.FC<AddTeamPopupProps> = ({ isOpen, onClose, onSubmit, anchorElement }) => {
-  const [teamName, setTeamName] = useState('');
-  const [description, setDescription] = useState('');
+const AddTeamPopup: React.FC<AddTeamPopupProps> = ({ isOpen, onClose, onSubmit, anchorElement, initialData }) => {
+  const [teamName, setTeamName] = useState(initialData?.name || '');
+  const [description, setDescription] = useState(initialData?.description || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+
+  // Update form when initialData changes
+  useEffect(() => {
+    if (initialData) {
+      setTeamName(initialData.name || '');
+      setDescription(initialData.description || '');
+    } else {
+      setTeamName('');
+      setDescription('');
+    }
+  }, [initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,7 +148,7 @@ const AddTeamPopup: React.FC<AddTeamPopupProps> = ({ isOpen, onClose, onSubmit, 
   return (
     <div ref={popupRef} className="add-team-popup" style={getPopupStyle()}>
       <div className="popup-header">
-        <h3>Create New Team</h3>
+        <h3>{initialData ? 'Edit Team' : 'Create New Team'}</h3>
         <button 
           className="close-btn" 
           onClick={handleClose}
@@ -195,7 +207,7 @@ const AddTeamPopup: React.FC<AddTeamPopupProps> = ({ isOpen, onClose, onSubmit, 
             disabled={isSubmitting || !teamName.trim()}
             className="btn-primary"
           >
-            {isSubmitting ? 'Creating...' : 'Create'}
+            {isSubmitting ? (initialData ? 'Updating...' : 'Creating...') : (initialData ? 'Update' : 'Create')}
           </button>
         </div>
       </form>

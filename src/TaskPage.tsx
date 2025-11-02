@@ -51,6 +51,8 @@ interface TeamMember {
   id: string;
   name: string;
   team_id?: string;
+  role?: string; // 'owner', 'member', 'manager', etc.
+  currentApp?: string; // Current app/activity, defaults to "sleeping"
 }
 
 // Team interface
@@ -100,6 +102,20 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [showE2EEHelp, setShowE2EEHelp] = useState(false);
   const [membersSidebarCollapsed, setMembersSidebarCollapsed] = useState(false);
   const [teamMemberCounts, setTeamMemberCounts] = useState<Record<string, number>>({});
+  
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    type: 'team' | 'member';
+    targetId: string;
+    targetName: string;
+  } | null>(null);
+  
+  // Edit team state
+  const [showEditTeamPopup, setShowEditTeamPopup] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
 
   // Load teams data independently (only teams user is a member of)
   const loadTeamsData = async () => {
@@ -296,13 +312,56 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     
     try {
       if (isTauri()) {
-        const members = await invoke('get_users_by_team', { teamId }) as TeamMember[];
-        setTeamMembers(members);
+        const members = await invoke('get_users_by_team', { teamId }) as any[];
+        // Map backend User objects to TeamMember with role
+        const teamMembers: TeamMember[] = members.map((user: any) => ({
+          id: user.id,
+          name: user.name,
+          team_id: teamId,
+          role: user.role || 'member', // Default to 'member' if no role
+          currentApp: 'sleeping' // Default, will be updated below
+        }));
+        
+        // Fetch current app for each member (in parallel)
+        const membersWithApps = await Promise.all(
+          teamMembers.map(async (member) => {
+            try {
+              // Query Supabase directly for active time entries for this user
+              const { data: activeEntries, error } = await supabase
+                .from('time_entries')
+                .select('app_id, applications(name)')
+                .eq('user_id', member.id)
+                .eq('is_active', true)
+                .limit(1);
+              
+              if (!error && activeEntries && activeEntries.length > 0) {
+                const entry = activeEntries[0];
+                // Handle nested application data
+                const appName = entry.applications?.name || 
+                              (typeof entry.applications === 'object' && entry.applications !== null 
+                                ? (entry.applications as any).name 
+                                : null);
+                
+                if (appName) {
+                  return { ...member, currentApp: appName };
+                }
+              }
+              
+              // Default to sleeping if no active entry or error
+              return { ...member, currentApp: 'sleeping' };
+            } catch (err) {
+              console.error(`Failed to get activity for member ${member.id}:`, err);
+              return { ...member, currentApp: 'sleeping' };
+            }
+          })
+        );
+        
+        setTeamMembers(membersWithApps);
       } else {
         // Browser mode - mock data
         const mockMembers: TeamMember[] = [
-          { id: 'user-1', name: 'John Doe', team_id: teamId },
-          { id: 'user-2', name: 'Jane Smith', team_id: teamId },
+          { id: 'user-1', name: 'John Doe', team_id: teamId, role: 'owner', currentApp: 'VS Code' },
+          { id: 'user-2', name: 'Jane Smith', team_id: teamId, role: 'member', currentApp: 'sleeping' },
         ];
         setTeamMembers(mockMembers);
       }
@@ -407,6 +466,188 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     setAddTeamAnchor(event.currentTarget);
     setShowAddTeamPopup(true);
   };
+
+  // Handle right-click on team
+  const handleTeamRightClick = (e: React.MouseEvent, team: Team) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      type: 'team',
+      targetId: team.id,
+      targetName: team.team_name
+    });
+  };
+
+  // Handle right-click on member
+  const handleMemberRightClick = (e: React.MouseEvent, member: TeamMember) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      type: 'member',
+      targetId: member.id,
+      targetName: member.name
+    });
+  };
+
+  // Close context menu
+  const closeContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  // Handle edit team
+  const handleEditTeam = () => {
+    if (!contextMenu) return;
+    const team = teams.find(t => t.id === contextMenu.targetId);
+    if (team) {
+      setEditingTeam(team);
+      setShowEditTeamPopup(true);
+      closeContextMenu();
+    }
+  };
+
+  // Handle update team
+  const handleUpdateTeam = async (teamData: { name: string; description?: string }) => {
+    if (!editingTeam) return;
+    
+    try {
+      console.log('Updating team:', editingTeam.id, teamData);
+      
+      // Update workspace in Supabase
+      const { error: updateError } = await supabase
+        .from('workspaces')
+        .update({
+          name: teamData.name,
+          description: teamData.description || null
+        })
+        .eq('id', editingTeam.id);
+
+      if (updateError) {
+        throw new Error(`Failed to update workspace: ${updateError.message}`);
+      }
+
+      // Update local state
+      setTeams(prev => prev.map(team => 
+        team.id === editingTeam.id 
+          ? { ...team, team_name: teamData.name, description: teamData.description }
+          : team
+      ));
+
+      setShowEditTeamPopup(false);
+      setEditingTeam(null);
+    } catch (error) {
+      console.error('Failed to update team:', error);
+      throw error;
+    }
+  };
+
+  // Handle delete team
+  const handleDeleteTeam = async () => {
+    if (!contextMenu) return;
+    
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${contextMenu.targetName}"? This action cannot be undone.`
+    );
+    
+    if (!confirmDelete) {
+      closeContextMenu();
+      return;
+    }
+
+    try {
+      if (isTauri()) {
+        await invoke('delete_team', { teamId: contextMenu.targetId });
+      } else {
+        // Browser mode - just remove from state
+        await supabase
+          .from('workspaces')
+          .delete()
+          .eq('id', contextMenu.targetId);
+      }
+
+      // Remove from local state
+      setTeams(prev => prev.filter(team => team.id !== contextMenu.targetId));
+      
+      // If deleted team was selected, select first available team or null
+      if (selectedTeam === contextMenu.targetId) {
+        const remainingTeams = teams.filter(team => team.id !== contextMenu.targetId);
+        setSelectedTeam(remainingTeams.length > 0 ? remainingTeams[0].id : null);
+      }
+
+      // Refresh member counts
+      refreshMemberCounts();
+      
+      closeContextMenu();
+    } catch (error) {
+      console.error('Failed to delete team:', error);
+      setError(`Failed to delete team: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      closeContextMenu();
+    }
+  };
+
+  // Handle delete member
+  const handleDeleteMember = async () => {
+    if (!contextMenu) return;
+    
+    const confirmDelete = window.confirm(
+      `Are you sure you want to remove "${contextMenu.targetName}" from this team?`
+    );
+    
+    if (!confirmDelete) {
+      closeContextMenu();
+      return;
+    }
+
+    try {
+      if (isTauri()) {
+        // Remove from workspace_members
+        await supabase
+          .from('workspace_members')
+          .delete()
+          .eq('user_id', contextMenu.targetId)
+          .eq('workspace_id', selectedTeam);
+      }
+
+      // Remove from local state
+      setTeamMembers(prev => prev.filter(member => member.id !== contextMenu.targetId));
+      
+      // Refresh member counts
+      refreshMemberCounts();
+      
+      closeContextMenu();
+    } catch (error) {
+      console.error('Failed to delete member:', error);
+      setError(`Failed to remove member: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      closeContextMenu();
+    }
+  };
+
+  // Close context menu when clicking outside or pressing Escape
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (contextMenu?.visible) {
+        closeContextMenu();
+      }
+    };
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && contextMenu?.visible) {
+        closeContextMenu();
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [contextMenu]);
 
   // Function to create a new team
   const handleCreateTeam = async (teamData: { name: string; description?: string }) => {
@@ -795,6 +1036,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                   key={team.id}
                   className={`team-item ${selectedTeam === team.id ? 'active' : ''}`}
                   onClick={() => setSelectedTeam(team.id)}
+                  onContextMenu={(e) => handleTeamRightClick(e, team)}
                 >
                   <span className="team-icon">👥</span>
                   <div className="team-info">
@@ -938,15 +1180,52 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
               ) : teamMembers.length === 0 ? (
                 <div className="members-empty">No members in this team</div>
               ) : (
-                teamMembers.map(member => (
-                  <div key={member.id} className="member-item">
-                    <div className="member-avatar-container">
-                      <span className="member-avatar">{getRandomEmoji(member.id)}</span>
-                      <span className="member-status-indicator"></span>
+                (() => {
+                  // Group members by role (Discord-style)
+                  const groupedMembers: Record<string, TeamMember[]> = {};
+                  teamMembers.forEach(member => {
+                    const role = member.role || 'member';
+                    if (!groupedMembers[role]) {
+                      groupedMembers[role] = [];
+                    }
+                    groupedMembers[role].push(member);
+                  });
+
+                  // Define role order (Owner first, then others)
+                  const roleOrder = ['owner', 'manager', 'member'];
+                  const sortedRoles = Object.keys(groupedMembers).sort((a, b) => {
+                    const aIndex = roleOrder.indexOf(a.toLowerCase());
+                    const bIndex = roleOrder.indexOf(b.toLowerCase());
+                    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+                    if (aIndex === -1) return 1;
+                    if (bIndex === -1) return -1;
+                    return aIndex - bIndex;
+                  });
+
+                  return sortedRoles.map(role => (
+                    <div key={role} className="member-role-group">
+                      <div className="member-role-label">
+                        {role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()}
+                      </div>
+                      {groupedMembers[role].map(member => (
+                        <div 
+                          key={member.id} 
+                          className="member-item"
+                          onContextMenu={(e) => handleMemberRightClick(e, member)}
+                        >
+                          <div className="member-avatar-container">
+                            <span className="member-avatar">{getRandomEmoji(member.id)}</span>
+                            <span className="member-status-indicator"></span>
+                          </div>
+                          <div className="member-info">
+                            <span className="member-name">{member.name}</span>
+                            <span className="member-activity">{member.currentApp || 'sleeping'}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <span className="member-name">{member.name}</span>
-                  </div>
-                ))
+                  ));
+                })()
               )}
             </div>
           )}
@@ -974,6 +1253,50 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         onSubmit={handleCreateTeam}
         anchorElement={addTeamAnchor}
       />
+      
+      {/* Edit Team Popup */}
+      {editingTeam && (
+        <AddTeamPopup 
+          isOpen={showEditTeamPopup}
+          onClose={() => {
+            setShowEditTeamPopup(false);
+            setEditingTeam(null);
+          }}
+          onSubmit={handleUpdateTeam}
+          anchorElement={null}
+          initialData={{ name: editingTeam.team_name, description: editingTeam.description || '' }}
+        />
+      )}
+      
+      {/* Context Menu */}
+      {contextMenu?.visible && (
+        <div 
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            top: Math.min(contextMenu.y, window.innerHeight - 100),
+            left: Math.min(contextMenu.x, window.innerWidth - 180),
+            zIndex: 1000
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {contextMenu.type === 'team' ? (
+            <>
+              <button className="context-menu-item" onClick={handleEditTeam}>
+                Edit
+              </button>
+              <button className="context-menu-item context-menu-item-danger" onClick={handleDeleteTeam}>
+                Delete
+              </button>
+            </>
+          ) : (
+            <button className="context-menu-item context-menu-item-danger" onClick={handleDeleteMember}>
+              Remove from team
+            </button>
+          )}
+        </div>
+      )}
       
       {/* Task Detail Modal */}
       <TaskDetailModal 
