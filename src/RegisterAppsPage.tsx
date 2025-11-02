@@ -43,9 +43,9 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [rlsErrors, setRlsErrors] = useState<string[]>([]);
 
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [showAddAppModal, setShowAddAppModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   const [detectedApps, setDetectedApps] = useState<DetectedApp[]>([]);
   const [isLoadingDetectedApps, setIsLoadingDetectedApps] = useState(false);
 
@@ -149,22 +149,22 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
     }
   };
 
-  // Close dropdown when clicking outside
+  // Close modal when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
+      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
+        setShowAddAppModal(false);
       }
     };
 
-    if (showDropdown) {
+    if (showAddAppModal) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showDropdown]);
+  }, [showAddAppModal]);
 
   const handleToggleApp = async (appId: string) => {
     if (BYPASS_DB_APPS) {
@@ -359,11 +359,12 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
   };
 
 
-  const handleDropdownToggle = () => {
-    if (!showDropdown) {
-      fetchDetectedApps();
+  const handleAddAppClick = async () => {
+    if (!showAddAppModal) {
+      // Fetch detected apps when opening modal (Windows logic)
+      await fetchDetectedApps();
     }
-    setShowDropdown(!showDropdown);
+    setShowAddAppModal(!showAddAppModal);
   };
 
   // Smart category detection based on app name
@@ -431,7 +432,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
         is_tracked: true,
       };
       setApps(prev => [...prev, newApp]);
-      setShowDropdown(false);
       setError(null);
       return;
     }
@@ -494,7 +494,6 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
 
       console.log('✅ Successfully created app:', newApp);
       setApps(prevApps => [...prevApps, newApp]);
-      setShowDropdown(false);
       setError(null);
     } catch (error) {
       console.error('❌ Failed to add app - detailed error:', {
@@ -905,51 +904,82 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
                 {isEditMode ? 'Done' : 'Edit'}
               </button>
               {!isEditMode && (
-                <div className="dropdown-container" ref={dropdownRef}>
-                  <div 
-                    className="ios-dropdown"
-                    onClick={handleDropdownToggle}
+                <>
+                  <button 
+                    className="add-app-button"
+                    onClick={handleAddAppClick}
                   >
-                    <span className="dropdown-text">Add App</span>
-                    <span className={`dropdown-arrow ${showDropdown ? 'open' : ''}`}>▼</span>
-                  </div>
-                  {showDropdown && (
-                    <div className="dropdown-menu">
-                      {isLoadingDetectedApps ? (
-                        <div className="dropdown-loading">
-                          <span className="loading-spinner">⏳</span>
-                          Detecting apps...
+                    Add App
+                  </button>
+
+                  {showAddAppModal && (
+                    <div className="modal-overlay" onClick={() => setShowAddAppModal(false)}>
+                      <div className="add-app-modal" ref={modalRef} onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                          <h2>Add Applications</h2>
+                          <button 
+                            className="modal-close-button"
+                            onClick={() => setShowAddAppModal(false)}
+                          >
+                            ×
+                          </button>
                         </div>
-                      ) : (
-                        <>
-                          {detectedApps
-                            .filter(app => !apps.some(registeredApp => registeredApp.name === app.name))
-                            .map((app, index) => (
-                              <div
-                                key={index}
-                                className="dropdown-item"
-                                onClick={() => handleAddFromDropdown(app)}
-                              >
-                                <span className="dropdown-icon">{getAppIcon(app.name)}</span>
-                                <div className="dropdown-app-info">
-                                  <span className="dropdown-name">{app.name}</span>
-                                  {app.window_title && (
-                                    <span className="dropdown-title">{app.window_title}</span>
-                                  )}
-                                  <span className="dropdown-process">{app.process_name}</span>
+                        <div className="modal-content">
+                          {isLoadingDetectedApps ? (
+                            <div className="modal-loading">
+                              <span className="loading-spinner">⏳</span>
+                              <p>Detecting apps...</p>
+                            </div>
+                          ) : (
+                            <div className="detected-apps-list">
+                              {detectedApps.length === 0 ? (
+                                <div className="modal-empty">
+                                  <div className="empty-icon">📱</div>
+                                  <p>No apps detected</p>
+                                  <p className="empty-subtitle">Open some applications and try again</p>
                                 </div>
-                              </div>
-                            ))}
-                          {detectedApps.filter(app => !apps.some(registeredApp => registeredApp.name === app.name)).length === 0 && (
-                            <div className="dropdown-empty">
-                              No detected apps available to add
+                              ) : (
+                                detectedApps.map((app, index) => {
+                                  const isAlreadyRegistered = apps.some(registeredApp => 
+                                    registeredApp.name === app.name || registeredApp.process_name === app.process_name
+                                  );
+                                  return (
+                                    <div
+                                      key={index}
+                                      className={`detected-app-item ${isAlreadyRegistered ? 'disabled' : ''}`}
+                                    >
+                                      <div className="detected-app-info">
+                                        <span className="detected-app-icon">{getAppIcon(app.name)}</span>
+                                        <div className="detected-app-details">
+                                          <span className="detected-app-name">{app.name}</span>
+                                          {app.window_title && (
+                                            <span className="detected-app-window">{app.window_title}</span>
+                                          )}
+                                          <span className="detected-app-process">{app.process_name}</span>
+                                        </div>
+                                      </div>
+                                      {isAlreadyRegistered ? (
+                                        <span className="already-registered-badge">Already Added</span>
+                                      ) : (
+                                        <button
+                                          className="add-icon-button"
+                                          onClick={() => handleAddFromDropdown(app)}
+                                          title="Add app"
+                                        >
+                                          +
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              )}
                             </div>
                           )}
-                        </>
-                      )}
+                        </div>
+                      </div>
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           </div>

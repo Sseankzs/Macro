@@ -249,21 +249,28 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
   }, []);
 
   useEffect(() => {
+    // Clear any stale cached activity on mount to ensure fresh data
+    setCurrentActivity(null);
+    
+    // Fetch immediately on mount (this will get fresh data from backend)
+    fetchCurrentActivity();
+    
     // Update current activity duration every second
     const durationInterval = setInterval(() => {
       updateCurrentActivityDuration();
     }, 1000);
     
-    // Fetch current activity every 10 seconds
+    // Fetch current activity every 1 second for faster updates (Mac/Windows get directly from OS, not database)
     const activityInterval = setInterval(() => {
       fetchCurrentActivity();
-    }, 10000);
+    }, 1000);
 
     return () => {
       clearInterval(durationInterval);
       clearInterval(activityInterval);
     };
-  }, [currentActivity]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - run once on mount, intervals handle the rest
 
   // Recalculate chart and table data when time period changes
   useEffect(() => {
@@ -298,6 +305,20 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
       }
     }
   }, [selectedTimePeriod, applications, timeEntries, loading]);
+
+  // Update current activity app name when applications list changes
+  useEffect(() => {
+    if (currentActivity && applications.length > 0) {
+      const updatedAppName = getRegisteredAppName(currentActivity);
+      if (updatedAppName !== currentActivity.app_name) {
+        setCurrentActivity({
+          ...currentActivity,
+          app_name: updatedAppName
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applications]);
 
   // Calculate task statistics
   const getTaskStats = () => {
@@ -863,41 +884,110 @@ function Dashboard({ onLogout, onPageChange }: DashboardProps) {
     });
   };
 
+  // Function to get registered app name from current activity
+  const getRegisteredAppName = (activity: CurrentActivity): string => {
+    // Try to match current activity app_name/process_name with registered applications
+    const currentAppName = activity.app_name.toLowerCase();
+    
+    // First try exact process_name match
+    const matchedApp = applications.find(app => 
+      app.process_name.toLowerCase() === currentAppName ||
+      app.name.toLowerCase() === currentAppName
+    );
+    
+    if (matchedApp) {
+      return matchedApp.name;
+    }
+    
+    // Try partial match (for Windows process_name vs app name)
+    const partialMatch = applications.find(app => {
+      const appProcessLower = app.process_name.toLowerCase();
+      const appNameLower = app.name.toLowerCase();
+      return currentAppName.includes(appProcessLower) || 
+             appProcessLower.includes(currentAppName) ||
+             currentAppName.includes(appNameLower) ||
+             appNameLower.includes(currentAppName);
+    });
+    
+    return partialMatch ? partialMatch.name : activity.app_name;
+  };
+
   // Function to fetch current activity with caching (optimized)
   const fetchCurrentActivity = async () => {
     try {
       if (isTauri()) {
         const activity = await invoke('get_current_activity') as CurrentActivity | null;
 
-        if (activity) {
-          setCurrentActivity(activity);
-          updateCache({ currentActivity: activity, currentActivityTimestamp: Date.now() });
+        if (activity && activity.app_name) {
+          // Update app_name to use registered app name if available
+          const updatedActivity: CurrentActivity = {
+            ...activity,
+            app_name: getRegisteredAppName(activity)
+          };
+          
+          // Always update state - don't compare with prev to avoid stale data
+          setCurrentActivity(updatedActivity);
+          updateCache({ currentActivity: updatedActivity, currentActivityTimestamp: Date.now() });
         } else {
-          // Fallback: derive current activity from detected processes
-          try {
-            type DetectedProcess = { name: string; process_name: string; is_active: boolean };
-            const processes = await invoke<DetectedProcess[]>('get_running_processes');
-            const active = processes.find(p => p.is_active) || processes[0];
-            if (active) {
-              const fallback: CurrentActivity = {
-                app_name: active.name || active.process_name,
-                app_category: 'Other',
-                start_time: new Date().toISOString(),
-                duration_minutes: 0,
-                duration_hours: 0,
-                is_active: true,
-                active_apps_count: 1,
-              };
-              setCurrentActivity(fallback);
-              updateCache({ currentActivity: fallback, currentActivityTimestamp: Date.now() });
-            } else {
-              setCurrentActivity(null);
-              updateCache({ currentActivity: null, currentActivityTimestamp: Date.now() });
+          // If backend returns null/empty, try fallback but don't overwrite with generic "app"
+          // Only use fallback if we have no current activity at all
+          if (!currentActivity) {
+            try {
+              type DetectedProcess = { name: string; process_name: string; is_active: boolean };
+              const processes = await invoke<DetectedProcess[]>('get_running_processes');
+              // Filter out generic/unhelpful names and prefer active apps that match registered apps
+              const helpful = processes.filter(p => {
+                const name = (p.name || p.process_name).toLowerCase();
+                // Filter out generic names like "app", "application", etc.
+                return !['app', 'application', 'macro'].includes(name) && name.length > 1;
+              });
+              
+              // Prefer active app that matches a registered app
+              let active = helpful.find(p => {
+                if (!p.is_active) return false;
+                const name = (p.name || p.process_name).toLowerCase();
+                return applications.some(app => 
+                  app.name.toLowerCase() === name || 
+                  app.process_name.toLowerCase() === name
+                );
+              });
+              
+              // If no registered match, use first active helpful app
+              if (!active) {
+                active = helpful.find(p => p.is_active) || helpful[0];
+              }
+              
+              if (active) {
+                const fallback: CurrentActivity = {
+                  app_name: active.name || active.process_name,
+                  app_category: 'Other',
+                  start_time: new Date().toISOString(),
+                  duration_minutes: 0,
+                  duration_hours: 0,
+                  is_active: true,
+                  active_apps_count: 1,
+                };
+                // Update app_name to use registered app name if available
+                const updatedFallback: CurrentActivity = {
+                  ...fallback,
+                  app_name: getRegisteredAppName(fallback)
+                };
+                setCurrentActivity(updatedFallback);
+                updateCache({ currentActivity: updatedFallback, currentActivityTimestamp: Date.now() });
+              } else {
+                // No helpful process found - keep current or set to null
+                if (!currentActivity) {
+                  setCurrentActivity(null);
+                  updateCache({ currentActivity: null, currentActivityTimestamp: Date.now() });
+                }
+              }
+            } catch (e) {
+              // If process detection fails, only clear if we have no activity
+              if (!currentActivity) {
+                setCurrentActivity(null);
+                updateCache({ currentActivity: null, currentActivityTimestamp: Date.now() });
+              }
             }
-          } catch (e) {
-            // If process detection fails, keep idle
-            setCurrentActivity(null);
-            updateCache({ currentActivity: null, currentActivityTimestamp: Date.now() });
           }
         }
       } else {
