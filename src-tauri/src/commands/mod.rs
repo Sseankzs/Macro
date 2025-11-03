@@ -2356,11 +2356,13 @@ pub async fn ai_chat(
         let mut executed_tools = Vec::new();
 
         for tool_call in tool_calls {
-            // Note: Using sync execution for now due to async function visibility issue
-            // The execute_tool_async function exists but isn't being recognized by the compiler
-            // This uses mock data instead of real database data
-            let executed_data = ai_assistant::execute_tool(&tool_call.name, &tool_call.arguments)
-                .unwrap_or_else(|| serde_json::json!({}));
+            // Use async execution with database access for real data
+            let executed_data = ai_assistant::execute_tool_async(
+                &tool_call.name, 
+                &tool_call.arguments,
+                &db,
+                workspace_id.as_deref()
+            ).await.unwrap_or_else(|| serde_json::json!({}));
 
             // Create a new tool call with the executed data
             executed_tools.push(crate::ai::ToolCall {
