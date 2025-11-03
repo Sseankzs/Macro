@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import { invoke } from '@tauri-apps/api/core';
 import { supabase } from './lib/supabase';
 import { BYPASS_LOGIN } from './config';
+import { formatTimestamp } from './utils/timeFormat';
 
 interface DebugPageProps {
   onLogout: () => void;
@@ -104,6 +105,259 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
   
   // Task assignees mapping - maps task ID to array of assignee user info
   const [taskAssigneesMap, setTaskAssigneesMap] = useState<Record<string, { id: string; name: string; email?: string }[]>>({});
+  
+  // User task count state
+  const [userTaskCount, setUserTaskCount] = useState<number>(0);
+  const [userTaskCountLoading, setUserTaskCountLoading] = useState<boolean>(false);
+  const [userTaskCountError, setUserTaskCountError] = useState<string | null>(null);
+
+  // High priority task count state
+  const [highPriorityTaskCount, setHighPriorityTaskCount] = useState<number>(0);
+  const [highPriorityTaskCountLoading, setHighPriorityTaskCountLoading] = useState<boolean>(false);
+  const [highPriorityTaskCountError, setHighPriorityTaskCountError] = useState<string | null>(null);
+
+  // Closest deadline state
+  const [closestDeadline, setClosestDeadline] = useState<string | null>(null);
+
+  const fetchUserTaskCount = async () => {
+    try {
+      setUserTaskCountLoading(true);
+      setUserTaskCountError(null);
+      
+      if (!currentUser) {
+        setUserTaskCount(0);
+        return;
+      }
+
+      if (isTauri()) {
+        // Get all assignees and filter for the current user
+        const allAssignees = await invoke<AssigneeRecord[]>('get_all_assignees');
+        console.log('✅ All assignees loaded:', allAssignees);
+        
+        const userAssignees = allAssignees.filter(assignee => assignee.user_id === currentUser.id);
+        console.log('✅ User assignees filtered:', userAssignees);
+        
+        if (!userAssignees || userAssignees.length === 0) {
+          setUserTaskCount(0);
+          return;
+        }
+        
+        // Get task IDs assigned to the user
+        const taskIds = userAssignees.map(assignee => assignee.task_id).filter(Boolean) as string[];
+        
+        if (taskIds.length === 0) {
+          setUserTaskCount(0);
+          return;
+        }
+        
+        // Get all tasks and filter for todo/in_progress status and matching task IDs
+        const allTasks = await invoke<TaskRecord[]>('get_all_tasks');
+        const activeTasks = allTasks.filter(task => 
+          taskIds.includes(task.id) && 
+          (task.status === 'todo' || task.status === 'in_progress')
+        );
+        
+        console.log('✅ Active tasks for user:', activeTasks);
+        setUserTaskCount(activeTasks.length);
+        return;
+      }
+
+      if (!BYPASS_LOGIN) {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        const userId = sessionData?.session?.user?.id;
+
+        if (!userId) {
+          setUserTaskCount(0);
+          return;
+        }
+
+        // Query assignee table for current user's task assignments
+        const { data: userAssignees, error: assigneesError } = await supabase
+          .from('assignee')
+          .select('task_id')
+          .eq('user_id', currentUser.id);
+        
+        if (assigneesError) throw assigneesError;
+        
+        if (!userAssignees || userAssignees.length === 0) {
+          setUserTaskCount(0);
+          return;
+        }
+        
+        const taskIds = userAssignees.map(assignee => assignee.task_id).filter(Boolean);
+        
+        if (taskIds.length === 0) {
+          setUserTaskCount(0);
+          return;
+        }
+        
+        // Query tasks table for tasks with todo/in_progress status
+        const { data: activeTasks, error: tasksError } = await supabase
+          .from('tasks')
+          .select('id')
+          .in('id', taskIds)
+          .in('status', ['todo', 'in_progress']);
+        
+        if (tasksError) throw tasksError;
+        
+        setUserTaskCount(activeTasks?.length || 0);
+        return;
+      }
+
+      // Mock data for bypass mode
+      if (currentUser.id === 'mock-user-1') {
+        setUserTaskCount(2); // mock-task-1 and mock-task-2 are todo/in_progress
+      } else {
+        setUserTaskCount(0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user task count:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setUserTaskCountError(message);
+      setUserTaskCount(0);
+    } finally {
+      setUserTaskCountLoading(false);
+    }
+  };
+
+  const fetchHighPriorityTaskCount = async () => {
+    try {
+      setHighPriorityTaskCountLoading(true);
+      setHighPriorityTaskCountError(null);
+      
+      if (!currentUser) {
+        setHighPriorityTaskCount(0);
+        setClosestDeadline(null);
+        return;
+      }
+
+      if (isTauri()) {
+        // Get all assignees and filter for the current user
+        const allAssignees = await invoke<AssigneeRecord[]>('get_all_assignees');
+        console.log('✅ All assignees loaded for high priority:', allAssignees);
+        
+        const userAssignees = allAssignees.filter(assignee => assignee.user_id === currentUser.id);
+        console.log('✅ User assignees filtered for high priority:', userAssignees);
+        
+        if (!userAssignees || userAssignees.length === 0) {
+          setHighPriorityTaskCount(0);
+          setClosestDeadline(null);
+          return;
+        }
+        
+        // Get task IDs assigned to the user
+        const taskIds = userAssignees.map(assignee => assignee.task_id).filter(Boolean) as string[];
+        
+        if (taskIds.length === 0) {
+          setHighPriorityTaskCount(0);
+          setClosestDeadline(null);
+          return;
+        }
+        
+        // Get all tasks and filter for todo/in_progress status, high priority, and matching task IDs
+        const allTasks = await invoke<TaskRecord[]>('get_all_tasks');
+        const highPriorityActiveTasks = allTasks.filter(task => 
+          taskIds.includes(task.id) && 
+          (task.status === 'todo' || task.status === 'in_progress') &&
+          task.priority === 'high'
+        );
+        
+        console.log('✅ High priority active tasks for user:', highPriorityActiveTasks);
+        setHighPriorityTaskCount(highPriorityActiveTasks.length);
+
+        // Find closest future deadline
+        const now = new Date();
+        const futureDeadlines = highPriorityActiveTasks
+          .filter(task => task.due_date && new Date(task.due_date) > now)
+          .map(task => new Date(task.due_date!))
+          .sort((a, b) => a.getTime() - b.getTime());
+        
+        setClosestDeadline(futureDeadlines.length > 0 ? futureDeadlines[0].toISOString() : null);
+        return;
+      }
+
+      if (!BYPASS_LOGIN) {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        const userId = sessionData?.session?.user?.id;
+
+        if (!userId) {
+          setHighPriorityTaskCount(0);
+          setClosestDeadline(null);
+          return;
+        }
+
+        // Query assignee table for current user's task assignments
+        const { data: userAssignees, error: assigneesError } = await supabase
+          .from('assignee')
+          .select('task_id')
+          .eq('user_id', currentUser.id);
+        
+        if (assigneesError) throw assigneesError;
+        
+        if (!userAssignees || userAssignees.length === 0) {
+          setHighPriorityTaskCount(0);
+          setClosestDeadline(null);
+          return;
+        }
+        
+        const taskIds = userAssignees.map(assignee => assignee.task_id).filter(Boolean);
+        
+        if (taskIds.length === 0) {
+          setHighPriorityTaskCount(0);
+          setClosestDeadline(null);
+          return;
+        }
+        
+        // Query tasks table for high priority tasks with todo/in_progress status
+        const { data: highPriorityTasks, error: tasksError } = await supabase
+          .from('tasks')
+          .select('id, due_date')
+          .in('id', taskIds)
+          .in('status', ['todo', 'in_progress'])
+          .eq('priority', 'high');
+        
+        if (tasksError) throw tasksError;
+        
+        setHighPriorityTaskCount(highPriorityTasks?.length || 0);
+
+        // Find closest future deadline
+        if (highPriorityTasks && highPriorityTasks.length > 0) {
+          const now = new Date();
+          const futureDeadlines = highPriorityTasks
+            .filter(task => task.due_date && new Date(task.due_date) > now)
+            .map(task => new Date(task.due_date))
+            .sort((a, b) => a.getTime() - b.getTime());
+          
+          setClosestDeadline(futureDeadlines.length > 0 ? futureDeadlines[0].toISOString() : null);
+        } else {
+          setClosestDeadline(null);
+        }
+        return;
+      }
+
+      // Mock data for bypass mode
+      if (currentUser.id === 'mock-user-1') {
+        setHighPriorityTaskCount(1); // One high priority task from mock data
+        // Set a mock future deadline (3 days from now)
+        const mockDeadline = new Date();
+        mockDeadline.setDate(mockDeadline.getDate() + 3);
+        setClosestDeadline(mockDeadline.toISOString());
+      } else {
+        setHighPriorityTaskCount(0);
+        setClosestDeadline(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch high priority task count:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setHighPriorityTaskCountError(message);
+      setHighPriorityTaskCount(0);
+      setClosestDeadline(null);
+    } finally {
+      setHighPriorityTaskCountLoading(false);
+    }
+  };
 
   const fetchWorkspaceMembers = async () => {
     try {
@@ -925,6 +1179,7 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
     fetchUsers();
     fetchCurrentUser();
     fetchWorkspaces();
+    fetchUserTaskCount();
   };
 
   useEffect(() => {
@@ -941,6 +1196,14 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
       fetchWorkspaceMembers();
     }
   }, [workspaces]);
+
+  // Calculate user task count when current user and tasks are available
+  useEffect(() => {
+    if (currentUser && tasks.length >= 0) { // >= 0 to handle empty task lists
+      fetchUserTaskCount();
+      fetchHighPriorityTaskCount();
+    }
+  }, [currentUser, tasks, assignees]);
 
   return (
     <div className="dashboard-container">
@@ -1008,6 +1271,110 @@ function DebugPage({ onLogout, onPageChange }: DebugPageProps) {
             ) : (
               <div style={{ textAlign: 'center', padding: '24px 0', color: '#6b7280' }}>
                 No current user detected.
+              </div>
+            )}
+          </section>
+
+          <section style={{ background: '#fff', borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: '0 8px 30px rgba(15, 23, 42, 0.08)' }}>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0 }}>User Active Tasks</h2>
+                <p style={{ margin: '4px 0 0', color: '#6b7280' }}>Number of tasks assigned to the current user with status 'todo' or 'in_progress'.</p>
+              </div>
+              <button className="btn-text" onClick={fetchUserTaskCount} disabled={userTaskCountLoading} style={{ minWidth: 90 }}>
+                {userTaskCountLoading ? 'Loading...' : 'Reload'}
+              </button>
+            </header>
+
+            {userTaskCountError && (
+              <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>
+                Failed to load user task count: {userTaskCountError}
+              </div>
+            )}
+
+            {!currentUser ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#6b7280' }}>
+                No current user available to calculate task count.
+              </div>
+            ) : (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                padding: '32px 24px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: 12,
+                color: 'white',
+                textAlign: 'center'
+              }}>
+                <div>
+                  <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '8px' }}>
+                    {userTaskCountLoading ? '...' : userTaskCount}
+                  </div>
+                  <div style={{ fontSize: '16px', opacity: 0.9 }}>
+                    Active Tasks for {currentUser.name}
+                  </div>
+                  <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '4px' }}>
+                    (Todo + In Progress)
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section style={{ background: '#fff', borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: '0 8px 30px rgba(15, 23, 42, 0.08)' }}>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0 }}>High Priority Tasks</h2>
+                <p style={{ margin: '4px 0 0', color: '#6b7280' }}>Number of high priority tasks assigned to the current user with status 'todo' or 'in_progress'.</p>
+              </div>
+              <button className="btn-text" onClick={fetchHighPriorityTaskCount} disabled={highPriorityTaskCountLoading} style={{ minWidth: 90 }}>
+                {highPriorityTaskCountLoading ? 'Loading...' : 'Reload'}
+              </button>
+            </header>
+
+            {highPriorityTaskCountError && (
+              <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>
+                Failed to load high priority task count: {highPriorityTaskCountError}
+              </div>
+            )}
+
+            {!currentUser ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#6b7280' }}>
+                No current user available to calculate high priority task count.
+              </div>
+            ) : (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                padding: '32px 24px',
+                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                borderRadius: 12,
+                color: 'white',
+                textAlign: 'center'
+              }}>
+                <div>
+                  <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '8px' }}>
+                    {highPriorityTaskCountLoading ? '...' : highPriorityTaskCount}
+                  </div>
+                  <div style={{ fontSize: '16px', opacity: 0.9 }}>
+                    High Priority Tasks for {currentUser.name}
+                  </div>
+                  <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '4px' }}>
+                    (Todo + In Progress)
+                  </div>
+                  {closestDeadline && (
+                    <div style={{ fontSize: '14px', opacity: 0.8, marginTop: '12px', padding: '8px 12px', background: 'rgba(255,255,255,0.15)', borderRadius: 8 }}>
+                      📅 Next deadline: {formatTimestamp(closestDeadline, 'relative')}
+                    </div>
+                  )}
+                  {!closestDeadline && highPriorityTaskCount > 0 && !highPriorityTaskCountLoading && (
+                    <div style={{ fontSize: '14px', opacity: 0.6, marginTop: '12px', fontStyle: 'italic' }}>
+                      No upcoming deadlines
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </section>

@@ -204,3 +204,36 @@ export const DashboardSkeletonGrid: React.FC = () => {
     </div>
   );
 };
+
+// Skeleton grid for register apps page
+export const AppsSkeletonGrid: React.FC = () => {
+  return (
+    <div className="apps-skeleton-grid">
+      <div className="skeleton-apps-header">
+        <div className="skeleton-apps-title"></div>
+        <div className="skeleton-header-actions">
+          <div className="skeleton-btn"></div>
+          <div className="skeleton-btn"></div>
+        </div>
+      </div>
+      <div className="skeleton-apps-section">
+        <div className="skeleton-section-title"></div>
+        <div className="skeleton-apps-grid">
+          {[1, 2, 3, 4, 5, 6].map((appIndex) => (
+            <div key={appIndex} className="skeleton-app-item">
+              <div className="skeleton-app-header">
+                <div className="skeleton-app-icon"></div>
+                <div className="skeleton-app-info">
+                  <div className="skeleton-app-name"></div>
+                  <div className="skeleton-app-process"></div>
+                  <div className="skeleton-app-category"></div>
+                </div>
+              </div>
+              <div className="skeleton-app-toggle"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};

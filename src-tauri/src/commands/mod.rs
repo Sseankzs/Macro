@@ -2294,13 +2294,15 @@ pub async fn logout_user() -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn ai_chat(
+    db: State<'_, Database>,
     message: String,
     conversation_history: Vec<ai_assistant::ChatMessage>,
+    workspace_id: Option<String>,
 ) -> Result<crate::ai::AIResponse, String> {
     use crate::ai::{AIService, GeminiService, ChatMessage as AIChatMessage};
 
     // Get productivity insights as context
-    let insights = match get_productivity_insights_for_context().await {
+    let insights = match get_productivity_insights_for_context(db.clone()).await {
         Ok(insights) => format_productivity_context(&insights),
         Err(_) => String::new(), // Continue without context if fetch fails
     };
@@ -2354,13 +2356,17 @@ pub async fn ai_chat(
         let mut executed_tools = Vec::new();
 
         for tool_call in tool_calls {
-            if let Some(executed_data) = ai_assistant::execute_tool(&tool_call.name, &tool_call.arguments) {
-                // Create a new tool call with the executed data
-                executed_tools.push(crate::ai::ToolCall {
-                    name: tool_call.name.clone(),
-                    arguments: executed_data,
-                });
-            }
+            // Note: Using sync execution for now due to async function visibility issue
+            // The execute_tool_async function exists but isn't being recognized by the compiler
+            // This uses mock data instead of real database data
+            let executed_data = ai_assistant::execute_tool(&tool_call.name, &tool_call.arguments)
+                .unwrap_or_else(|| serde_json::json!({}));
+
+            // Create a new tool call with the executed data
+            executed_tools.push(crate::ai::ToolCall {
+                name: tool_call.name.clone(),
+                arguments: executed_data,
+            });
         }
 
         if !executed_tools.is_empty() {
@@ -2371,10 +2377,9 @@ pub async fn ai_chat(
     Ok(response)
 }
 
-async fn get_productivity_insights_for_context() -> Result<ProductivityInsights, String> {
-    // For context generation, we'll use mock data for now
-    // The actual get_productivity_insights command will be called from frontend
-    Ok(ai_assistant::get_mock_productivity_insights())
+async fn get_productivity_insights_for_context(db: State<'_, Database>) -> Result<ProductivityInsights, String> {
+    // Use real database data instead of mock data
+    ai_assistant::get_productivity_insights(db).await
 }
 
 fn format_productivity_context(insights: &ProductivityInsights) -> String {

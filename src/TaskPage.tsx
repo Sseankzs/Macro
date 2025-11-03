@@ -54,7 +54,7 @@ interface TeamMember {
   name: string;
   team_id?: string;
   role?: string; // 'owner', 'member', 'manager', etc.
-  currentApp?: string; // Current app/activity, defaults to "sleeping"
+  currentApp?: string; // Current app/activity, defaults to "idle"
 }
 
 // Team interface
@@ -88,8 +88,6 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   const [clickPosition, setClickPosition] = useState<{ x: number; y: number } | undefined>();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{type: 'task', id: string, title: string} | null>(null);
-  const [draggedTask, setDraggedTask] = useState<string | null>(null);
-  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
   const [showE2EEHelp, setShowE2EEHelp] = useState(false);
   const [membersSidebarCollapsed, setMembersSidebarCollapsed] = useState(false);
   const [teamMemberCounts, setTeamMemberCounts] = useState<Record<string, number>>({});
@@ -107,6 +105,11 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
   // Edit team state
   const [showEditTeamPopup, setShowEditTeamPopup] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  
+  // Add member state
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [addMemberEmail, setAddMemberEmail] = useState('');
+  const [isAddingMember, setIsAddingMember] = useState(false);
 
   // Load assignees for a specific task
   const loadTaskAssignees = async (taskId: string): Promise<TeamMember[]> => {
@@ -644,7 +647,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
             name: user.name,
             team_id: teamId,
             role: user.role || 'member', // Default to 'member' if no role
-            currentApp: 'sleeping' // Default, will be updated below
+            currentApp: 'idle' // Default, will be updated below
           };
         });
         
@@ -652,32 +655,49 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         const membersWithApps = await Promise.all(
           teamMembers.map(async (member) => {
             try {
-              // Query Supabase directly for active time entries for this user
-              const { data: activeEntries, error } = await supabase
-                .from('time_entries')
-                .select('app_id, applications(name)')
-                .eq('user_id', member.id)
-                .eq('is_active', true)
-                .limit(1);
+              // Use the backend function to get user's recent time entries
+              const timeEntries = await invoke('get_time_entries_by_user', { 
+                userId: member.id, 
+                limit: 5  // Get last 5 entries to find the most recent with an app
+              }) as any[];
               
-              if (!error && activeEntries && activeEntries.length > 0) {
-                const entry = activeEntries[0];
-                // Handle nested application data
-                const appName = entry.applications?.name || 
-                              (typeof entry.applications === 'object' && entry.applications !== null 
-                                ? (entry.applications as any).name 
-                                : null);
-                
-                if (appName) {
-                  return { ...member, currentApp: appName };
+              if (timeEntries && timeEntries.length > 0) {
+                // Find the most recent entry with an app_id
+                for (const entry of timeEntries) {
+                  if (entry.app_id) {
+                    try {
+                      // Get application details
+                      const { data: app, error } = await supabase
+                        .from('applications')
+                        .select('name')
+                        .eq('id', entry.app_id)
+                        .single();
+                      
+                      if (!error && app && app.name) {
+                        // Check if this entry is recent (within last 30 minutes)
+                        const entryTime = new Date(entry.start_time || entry.created_at);
+                        const now = new Date();
+                        const timeDiff = now.getTime() - entryTime.getTime();
+                        const thirtyMinutes = 30 * 60 * 1000; // 30 minutes in milliseconds
+                        
+                        if (timeDiff <= thirtyMinutes) {
+                          return { ...member, currentApp: app.name };
+                        } else {
+                          return { ...member, currentApp: 'idle' };
+                        }
+                      }
+                    } catch (appErr) {
+                      console.warn(`Failed to get app details for ${entry.app_id}:`, appErr);
+                    }
+                  }
                 }
               }
               
-              // Default to sleeping if no active entry or error
-              return { ...member, currentApp: 'sleeping' };
+              // Default to idle if no recent activity found
+              return { ...member, currentApp: 'idle' };
             } catch (err) {
               console.error(`Failed to get activity for member ${member.id}:`, err);
-              return { ...member, currentApp: 'sleeping' };
+              return { ...member, currentApp: 'idle' };
             }
           })
         );
@@ -687,7 +707,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         // Browser mode - mock data
         const mockMembers: TeamMember[] = [
           { id: 'user-1', name: 'John Doe', team_id: teamId, role: 'owner', currentApp: 'VS Code' },
-          { id: 'user-2', name: 'Jane Smith', team_id: teamId, role: 'member', currentApp: 'sleeping' },
+          { id: 'user-2', name: 'Jane Smith', team_id: teamId, role: 'member', currentApp: 'idle' },
         ];
         setTeamMembers(mockMembers);
       }
@@ -1058,6 +1078,55 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     }
   };
 
+  // Function to handle adding a member to the team
+  const handleAddMember = async () => {
+    if (!addMemberEmail.trim()) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    if (!selectedTeam) {
+      setError('No team selected');
+      return;
+    }
+
+    setIsAddingMember(true);
+
+    try {
+      console.log('🚀 Starting member invitation process...', {
+        email: addMemberEmail,
+        teamId: selectedTeam
+      });
+
+      // Here you would typically call your backend API to invite the member
+      // For now, we'll show a placeholder implementation
+      
+      // Example API call (you'll need to implement this in your backend):
+      // await invoke('invite_team_member', {
+      //   teamId: selectedTeam,
+      //   email: addMemberEmail.trim()
+      // });
+
+      console.log('✅ Member invitation sent successfully');
+      
+      // Close modal and reset form
+      setShowAddMemberModal(false);
+      setAddMemberEmail('');
+      
+      // Show success message
+      setError(null);
+      
+      // Optionally refresh team members list
+      loadTeamMembers(selectedTeam);
+      
+    } catch (error) {
+      console.error('❌ Failed to invite member:', error);
+      setError(`Failed to invite member: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsAddingMember(false);
+    }
+  };
+
   useEffect(() => {
     loadAllData();
   }, []);
@@ -1099,65 +1168,6 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     const month = date.toLocaleDateString('en-US', { month: 'short' });
     const day = date.getDate();
     return `${month} ${day}`;
-  };
-
-  // Drag and drop handlers
-  const handleDragStart = (e: React.DragEvent, taskId: string) => {
-    setDraggedTask(taskId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragEnd = () => {
-    setDraggedTask(null);
-    setDragOverStatus(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent, status: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverStatus(status);
-  };
-
-  const handleDragLeave = () => {
-    setDragOverStatus(null);
-  };
-
-  const handleDrop = async (e: React.DragEvent, newStatus: 'Todo' | 'InProgress' | 'Done') => {
-    e.preventDefault();
-    setDragOverStatus(null);
-    
-    if (!draggedTask) return;
-    
-    const task = tasks.find(t => t.id === draggedTask);
-    if (!task || task.status === newStatus) {
-      setDraggedTask(null);
-      return;
-    }
-    
-    try {
-      // Optimistically update the UI
-      setTasks(prev => prev.map(t => 
-        t.id === draggedTask ? { ...t, status: newStatus } : t
-      ));
-      
-      // Update in backend
-      if (isTauri()) {
-        await invoke('update_task', {
-          taskId: draggedTask,
-          status: newStatus
-        });
-        console.log('Task status updated successfully');
-      }
-    } catch (error) {
-      console.error('Failed to update task status:', error);
-      // Revert the UI change if backend update fails
-      setTasks(prev => prev.map(t => 
-        t.id === draggedTask ? { ...t, status: task.status } : t
-      ));
-      setError('Failed to update task status. Please try again.');
-    }
-    
-    setDraggedTask(null);
   };
 
   // Handle task card click
@@ -1202,10 +1212,8 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     
     return (
       <div
-        className={`task-card ${editMode ? 'edit-mode' : ''} ${draggedTask === task.id ? 'dragging' : ''}`}
-        draggable={!editMode}
-        onDragStart={editMode ? undefined : (e) => handleDragStart(e, task.id)}
-        onDragEnd={editMode ? undefined : handleDragEnd}
+        className={`task-card ${editMode ? 'edit-mode' : ''}`}
+        onClick={() => handleTaskClick(task)}
       >
         <div className="task-header">
           <div className="task-priority-container">
@@ -1300,10 +1308,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
     count: number;
   }) => (
     <div 
-      className={`status-column ${dragOverStatus === status ? 'drag-over' : ''} ${editMode ? 'edit-mode' : ''}`}
-      onDragOver={editMode ? undefined : (e) => handleDragOver(e, status)}
-      onDragLeave={editMode ? undefined : handleDragLeave}
-      onDrop={editMode ? undefined : (e) => handleDrop(e, status)}
+      className={`status-column ${editMode ? 'edit-mode' : ''}`}
     >
       <div className="status-header">
         <h3 className="status-title" data-status={status}>{title}</h3>
@@ -1493,13 +1498,15 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
         <div className={`task-members-sidebar ${membersSidebarCollapsed ? 'collapsed' : ''}`}>
           <div className="task-members-header">
             <h3>{selectedTeam ? teams.find(t => t.id === selectedTeam)?.team_name || 'Members' : 'Members'}</h3>
-            <button 
-              className="collapse-toggle-btn"
-              onClick={() => setMembersSidebarCollapsed(!membersSidebarCollapsed)}
-              title={membersSidebarCollapsed ? 'Expand members' : 'Collapse members'}
-            >
-              {membersSidebarCollapsed ? '▶' : '◀'}
-            </button>
+            <div className="task-members-header-actions">
+              <button 
+                className="collapse-toggle-btn"
+                onClick={() => setMembersSidebarCollapsed(!membersSidebarCollapsed)}
+                title={membersSidebarCollapsed ? 'Expand members' : 'Collapse members'}
+              >
+                {membersSidebarCollapsed ? '▶' : '◀'}
+              </button>
+            </div>
           </div>
           {!membersSidebarCollapsed && (
             <div className="task-members-list">
@@ -1546,7 +1553,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                               </div>
                               <div className="member-info">
                                 <span className="member-name">{member.name}</span>
-                                <span className="member-activity">{member.currentApp || 'sleeping'}</span>
+                                <span className="member-activity">{member.currentApp || 'idle'}</span>
                               </div>
                             </div>
                           ))}
@@ -1571,7 +1578,7 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                               </div>
                               <div className="member-info">
                                 <span className="member-name">{member.name}</span>
-                                <span className="member-activity">{member.currentApp || 'sleeping'}</span>
+                                <span className="member-activity">{member.currentApp || 'idle'}</span>
                               </div>
                             </div>
                           ))}
@@ -1581,6 +1588,20 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
                   );
                 })()
               )}
+            </div>
+          )}
+          
+          {/* Add Member Button at Bottom */}
+          {selectedTeam && !membersSidebarCollapsed && (
+            <div className="add-member-bottom">
+              <button 
+                className="add-member-bottom-btn"
+                onClick={() => setShowAddMemberModal(true)}
+                title="Add member to team"
+              >
+                <span className="add-member-icon">+</span>
+                Add Member
+              </button>
             </div>
           )}
         </div>
@@ -1697,6 +1718,60 @@ function TaskPage({ onLogout, onPageChange }: TaskPageProps) {
               >
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Add Member Modal */}
+      {showAddMemberModal && (
+        <div className="modal-overlay" onClick={() => setShowAddMemberModal(false)}>
+          <div className="add-member-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Add Team Member</h2>
+              <button 
+                className="modal-close-button"
+                onClick={() => setShowAddMemberModal(false)}
+                disabled={isAddingMember}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-content">
+              <div className="add-member-form">
+                <div className="form-group">
+                  <label htmlFor="member-email">Email Address</label>
+                  <input
+                    id="member-email"
+                    type="email"
+                    value={addMemberEmail}
+                    onChange={(e) => setAddMemberEmail(e.target.value)}
+                    placeholder="Enter email address to invite"
+                    disabled={isAddingMember}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleAddMember();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="form-actions">
+                  <button 
+                    className="cancel-btn"
+                    onClick={() => setShowAddMemberModal(false)}
+                    disabled={isAddingMember}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    className="add-btn"
+                    onClick={handleAddMember}
+                    disabled={isAddingMember || !addMemberEmail.trim()}
+                  >
+                    {isAddingMember ? 'Sending Invite...' : 'Send Invite'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

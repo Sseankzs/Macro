@@ -167,7 +167,8 @@
 }
 
 .task-members-sidebar.collapsed .task-members-header h3,
-.task-members-sidebar.collapsed .task-members-list {
+.task-members-sidebar.collapsed .task-members-list,
+.task-members-sidebar.collapsed .add-member-bottom {
   display: none;
 }
 
@@ -455,13 +456,6 @@
   position: relative;
 }
 
-.status-column.drag-over {
-  background: rgba(0, 122, 255, 0.05);
-  border-radius: 12px;
-  padding: 16px;
-  transition: all 0.2s ease;
-}
-
 .status-column.edit-mode {
   background: rgba(0, 122, 255, 0.05);
   border-radius: 12px;
@@ -547,11 +541,6 @@
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   border-color: #cbd5e0;
-}
-
-.task-card.dragging {
-  opacity: 0.5;
-  transform: rotate(5deg);
 }
 
 .task-card.edit-mode {
@@ -703,6 +692,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 6px;
+  gap: 8px;
 }
 
 .task-assignee {
@@ -716,15 +706,15 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 6px;
+  align-items: center;
 }
 
 /* Individual assignee tag */
 .task-assignee-tag {
   display: inline-flex;
   align-items: center;
-  background: #007AFF;
-  color: white;
+  background: #E3F2FD;
+  color: #1976D2;
   padding: 4px 8px;
   border-radius: 12px;
   font-size: 11px;
@@ -742,7 +732,7 @@
 }
 
 .task-assignee-tag .assignee-name {
-  color: white;
+  color: #1976D2;
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
@@ -878,6 +868,194 @@
 .delete-btn:hover {
   background: #d70015;
   transform: translateY(-1px);
+}
+
+/* Add Member Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.add-member-modal {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+  padding: 0;
+  width: 90%;
+  max-width: 400px;
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h2 {
+  color: #1d1d1f;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.modal-close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #8e8e93;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.modal-close-button:hover {
+  background: #f2f2f7;
+  color: #1d1d1f;
+}
+
+.modal-close-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-content {
+  padding: 24px;
+}
+
+.add-member-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  color: #1d1d1f;
+  font-size: 16px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.form-group input {
+  padding: 12px 16px;
+  border: 1px solid #d1d1d6;
+  border-radius: 12px;
+  font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: white;
+  color: #1d1d1f;
+  transition: all 0.2s ease;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #007AFF;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.form-group input:disabled {
+  background: #f2f2f7;
+  color: #8e8e93;
+  cursor: not-allowed;
+}
+
+.form-group input::placeholder {
+  color: #8e8e93;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+
+.add-btn {
+  background: #007AFF;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.add-btn:hover:not(:disabled) {
+  background: #0056CC;
+  transform: translateY(-1px);
+}
+
+.add-btn:disabled {
+  background: #d1d1d6;
+  color: #8e8e93;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Add Member Bottom Button */
+.add-member-bottom {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+
+.add-member-bottom-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f2f2f7;
+  color: #1d1d1f;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.add-member-bottom-btn:hover {
+  background: #e5e5ea;
+  transform: translateY(-1px);
+}
+
+.add-member-icon {
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1;
 }
 
 /* Responsive Design */

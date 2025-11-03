@@ -778,3 +778,127 @@
     max-width: 220px;
   }
 }
+
+/* Apps Skeleton Grid */
+.apps-skeleton-grid {
+  padding: 24px;
+  max-width: 100%;
+  width: 100%;
+}
+
+.skeleton-apps-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.skeleton-apps-title {
+  height: 32px;
+  width: 200px;
+  background: linear-gradient(90deg, rgba(240, 240, 240, 0.8) 25%, rgba(250, 250, 250, 0.8) 50%, rgba(240, 240, 240, 0.8) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+.skeleton-apps-section {
+  margin-bottom: 32px;
+}
+
+.skeleton-section-title {
+  height: 24px;
+  width: 180px;
+  background: linear-gradient(90deg, rgba(240, 240, 240, 0.8) 25%, rgba(250, 250, 250, 0.8) 50%, rgba(240, 240, 240, 0.8) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.skeleton-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.skeleton-app-item {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(10px);
+}
+
+.skeleton-app-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.skeleton-app-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(90deg, rgba(240, 240, 240, 0.8) 25%, rgba(250, 250, 250, 0.8) 50%, rgba(240, 240, 240, 0.8) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.skeleton-app-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.skeleton-app-name {
+  height: 16px;
+  width: 120px;
+  background: linear-gradient(90deg, rgba(240, 240, 240, 0.8) 25%, rgba(250, 250, 250, 0.8) 50%, rgba(240, 240, 240, 0.8) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-app-process {
+  height: 12px;
+  width: 100px;
+  background: linear-gradient(90deg, rgba(240, 240, 240, 0.8) 25%, rgba(250, 250, 250, 0.8) 50%, rgba(240, 240, 240, 0.8) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-app-category {
+  height: 12px;
+  width: 80px;
+  background: linear-gradient(90deg, rgba(240, 240, 240, 0.8) 25%, rgba(250, 250, 250, 0.8) 50%, rgba(240, 240, 240, 0.8) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-app-toggle {
+  width: 44px;
+  height: 24px;
+  background: linear-gradient(90deg, rgba(240, 240, 240, 0.8) 25%, rgba(250, 250, 250, 0.8) 50%, rgba(240, 240, 240, 0.8) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 12px;
+}
+
+@media (max-width: 768px) {
+  .skeleton-apps-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .apps-skeleton-grid {
+    padding: 16px;
+  }
+}

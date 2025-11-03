@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useDashboardCache } from './contexts/DashboardCacheContext';
 import { BYPASS_DB_APPS } from './config';
 import PageSourceBadge from './components/PageSourceBadge';
+import { AppsSkeletonGrid, IOSSpinner } from './components/LoadingComponents';
 
 interface App {
   id: string;
@@ -807,10 +808,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
 
             {/* Loading State */}
             {isLoadingApps ? (
-              <div className="loading-state">
-                <div className="loading-spinner">⏳</div>
-                <p>Loading applications...</p>
-              </div>
+              <AppsSkeletonGrid />
             ) : (
               <div className="apps-section">
                 {/* Registered Apps Section - shows apps that are toggled on */}
@@ -894,7 +892,7 @@ function RegisterAppsPage({ onLogout, onPageChange }: RegisterAppsPageProps) {
             <div className="modal-content">
               {isLoadingApps ? (
                 <div className="modal-loading">
-                  <span className="loading-spinner">⏳</span>
+                  <IOSSpinner size="medium" />
                   <p>Loading apps...</p>
                 </div>
               ) : (
