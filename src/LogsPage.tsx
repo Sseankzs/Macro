@@ -50,6 +50,85 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
   // OS detection for debugging
   const [detectedOS, setDetectedOS] = useState<string>('Unknown');
 
+  // Export function for CSV/Excel
+  const exportToCSV = () => {
+    try {
+      // Use the same filtering logic as the display
+      const dataToExport = timeEntries.filter(entry => {
+        if (!searchTerm) return true;
+        
+        const appName = getAppName(entry.app_id).toLowerCase();
+        return appName.includes(searchTerm.toLowerCase());
+      });
+      
+      if (dataToExport.length === 0) {
+        alert('No data to export');
+        return;
+      }
+
+      // Create CSV headers
+      const headers = [
+        'Date',
+        'Start Time',
+        'End Time',
+        'Duration (hours)',
+        'Application',
+        'Status',
+        'Task ID'
+      ];
+
+      // Convert data to CSV format
+      const csvRows = [
+        headers.join(','), // Header row
+        ...dataToExport.map((entry: TimeEntry) => {
+          const startDate = new Date(entry.start_time);
+          const endDate = entry.end_time ? new Date(entry.end_time) : null;
+          const duration = entry.duration_seconds ? (entry.duration_seconds / 3600).toFixed(2) : 'N/A';
+          const appName = getAppName(entry.app_id);
+          
+          return [
+            startDate.toLocaleDateString(),
+            startDate.toLocaleTimeString(),
+            endDate ? endDate.toLocaleTimeString() : 'Active',
+            duration,
+            `"${appName}"`, // Wrap in quotes to handle commas in app names
+            entry.is_active ? 'Active' : 'Completed',
+            entry.task_id || 'N/A'
+          ].join(',');
+        })
+      ];
+
+      // Create and download the CSV file
+      const csvContent = csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        
+        // Generate filename with current date
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const filterStr = timeFilter !== 'all' ? `_${timeFilter}` : '';
+        link.setAttribute('download', `time_logs_${dateStr}${filterStr}.csv`);
+        
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Show success message
+        alert(`Successfully exported ${dataToExport.length} entries to CSV file: time_logs_${dateStr}${filterStr}.csv`);
+      } else {
+        alert('Your browser does not support file downloads');
+      }
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      alert('Failed to export data. Please try again.');
+    }
+  };
+
   useEffect(() => {
     // Fetch applications first, then time entries, so the lookup map is ready
     const loadData = async () => {
@@ -313,6 +392,9 @@ function LogsPage({ onLogout, onPageChange }: LogsPageProps) {
             <div className="header-actions">
               <button className="btn-secondary" onClick={() => fetchTimeEntries()}>
                 Refresh
+              </button>
+              <button className="btn-primary" onClick={exportToCSV}>
+                Export CSV
               </button>
             </div>
             {/* OS Detection Debug Indicator */}
